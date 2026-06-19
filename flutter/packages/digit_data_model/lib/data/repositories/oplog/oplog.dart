@@ -1,0 +1,402 @@
+import 'dart:async';
+
+import 'package:collection/collection.dart';
+import 'package:flutter/foundation.dart';
+import 'package:isar/isar.dart';
+
+import '../../../data_model.dart';
+import '../../../utils/app_exception.dart';
+
+abstract class OpLogManager<T extends EntityModel> {
+  final Isar isar;
+
+  const OpLogManager(this.isar);
+
+  Future<List<OpLogEntry<T>>> getPendingUpSync(
+    DataModelType type, {
+    required String createdBy,
+  }) async {
+    final createOpLogs = isar.opLogs
+        .filter()
+        .entityTypeEqualTo(type)
+        .operationEqualTo(DataOperation.create)
+        .serverGeneratedIdIsNull()
+        .syncedUpEqualTo(false)
+        .syncedDownEqualTo(false)
+        .createdByEqualTo(createdBy)
+        .findAllSync();
+
+    final singleCreateOpLogs = isar.opLogs
+        .filter()
+        .entityTypeEqualTo(type)
+        .operationEqualTo(DataOperation.singleCreate)
+        .serverGeneratedIdIsNull()
+        .syncedUpEqualTo(false)
+        .syncedDownEqualTo(false)
+        .createdByEqualTo(createdBy)
+        .findAllSync();
+
+    final singleUpdateOpLogs = isar.opLogs
+        .filter()
+        .entityTypeEqualTo(type)
+        .operationEqualTo(DataOperation.singleUpdate)
+        .serverGeneratedIdIsNotNull()
+        .syncedUpEqualTo(false)
+        .syncedDownEqualTo(false)
+        .createdByEqualTo(createdBy)
+        .findAllSync();
+
+    // Handle update operations with null serverGeneratedId by copying from create record
+    final updateOpLogsWithNullServerId = isar.opLogs
+        .filter()
+        .entityTypeEqualTo(type)
+        .operationEqualTo(DataOperation.update)
+        .serverGeneratedIdIsNull()
+        .nonRecoverableErrorEqualTo(false)
+        .syncedUpEqualTo(false)
+        .syncedDownEqualTo(false)
+        .createdByEqualTo(createdBy)
+        .findAllSync();
+
+    final opLogsToUpdate = <OpLog>[];
+    for (final updateOpLog in updateOpLogsWithNullServerId) {
+      final createOpLog = isar.opLogs
+          .filter()
+          .clientReferenceIdEqualTo(updateOpLog.clientReferenceId)
+          .operationEqualTo(DataOperation.create)
+          .serverGeneratedIdIsNotNull()
+          .findFirstSync();
+
+      if (createOpLog != null && createOpLog.serverGeneratedId != null) {
+        final entry = OpLogEntry.fromOpLog<T>(updateOpLog);
+        final updatedEntry = entry.copyWith(
+          serverGeneratedId: createOpLog.serverGeneratedId,
+          rowVersion: createOpLog.rowVersion,
+        );
+        opLogsToUpdate.add(updatedEntry.oplog);
+      }
+    }
+    if (opLogsToUpdate.isNotEmpty) {
+      isar.writeTxnSync(() {
+        isar.opLogs.putAllSync(opLogsToUpdate);
+      });
+    }
+
+    final updateOpLogs = isar.opLogs
+        .filter()
+        .entityTypeEqualTo(type)
+        .operationEqualTo(DataOperation.update)
+        .serverGeneratedIdIsNotNull()
+        .nonRecoverableErrorEqualTo(false)
+        .syncedUpEqualTo(false)
+        .syncedDownEqualTo(false)
+        .createdByEqualTo(createdBy)
+        .findAllSync();
+
+    final errorOpLogs = isar.opLogs
+        .filter()
+        .entityTypeEqualTo(type)
+        .syncedDownEqualTo(false)
+        .nonRecoverableErrorEqualTo(true)
+        .createdByEqualTo(createdBy)
+        .findAllSync();
+
+    final deleteOpLogs = isar.opLogs
+        .filter()
+        .entityTypeEqualTo(type)
+        .operationEqualTo(DataOperation.delete)
+        .serverGeneratedIdIsNotNull()
+        .syncedUpEqualTo(false)
+        .syncedDownEqualTo(false)
+        .createdByEqualTo(createdBy)
+        .findAllSync();
+
+    final nonRecoverableOpLogs = isar.opLogs
+        .filter()
+        .entityTypeEqualTo(type)
+        .syncedUpEqualTo(true)
+        .syncedDownEqualTo(false)
+        .nonRecoverableErrorEqualTo(false)
+        .syncDownRetryCountGreaterThan(
+          DigitDataModelSingleton().syncDownRetryCount - 1,
+        )
+        .createdByEqualTo(createdBy)
+        .findAllSync();
+
+    var entries = [
+      createOpLogs,
+      updateOpLogs,
+      deleteOpLogs,
+      singleCreateOpLogs,
+      singleUpdateOpLogs,
+      errorOpLogs,
+      nonRecoverableOpLogs,
+    ].expand((element) => element);
+
+    entries = entries.sortedBy((element) => element.createdAt);
+
+    final groupedEntries = entries.groupListsBy(
+      (element) => element.clientReferenceId,
+    );
+
+    final entriesForUpSync = groupedEntries.entries
+        .map<OpLog?>((entry) {
+          if (entry.key == null) return null;
+          if (entry.value.isEmpty) return null;
+
+          return entry.value.first;
+        })
+        .whereNotNull()
+        .toList();
+
+    return entriesForUpSync.map((e) => OpLogEntry.fromOpLog<T>(e)).toList();
+  }
+
+  Future<List<OpLogEntry<T>>> getPendingDownSync(
+    DataModelType type, {
+    required String createdBy,
+  }) async {
+    var oplogs = isar.opLogs
+        .filter()
+        .syncedUpEqualTo(true)
+        .syncDownRetryCountLessThan(
+            DigitDataModelSingleton().syncDownRetryCount)
+        .syncedDownEqualTo(false)
+        .entityTypeEqualTo(type)
+        .findAllSync();
+
+    oplogs = oplogs
+        .sortedBy((element) => element.createdAt)
+        .where(
+          (element) =>
+              element.entityType != DataModelType.userLocation &&
+              element.entityType != DataModelType.complaints,
+        )
+        .toList();
+
+    return oplogs.map((e) => OpLogEntry.fromOpLog<T>(e)).toList();
+  }
+
+  Future<void> put(OpLogEntry<dynamic> entry) async {
+    try {
+      isar.writeTxnSync(() {
+        isar.opLogs.putSync(entry
+            .copyWith(
+              clientReferenceId: getClientReferenceId(entry.entity),
+              serverGeneratedId: getServerGeneratedId(entry.entity),
+              rowVersion: getRowVersion(entry.entity),
+              nonRecoverableError: getNonRecoverableError(entry.entity),
+            )
+            .oplog);
+      });
+    } catch (e) {
+      if (kDebugMode) {
+        print('error in isar $e');
+      }
+      rethrow;
+    }
+
+    return;
+  }
+
+  Future<void> markSyncUp({
+    OpLogEntry<T>? entry,
+    int? id,
+    String? clientReferenceId,
+    bool? nonRecoverableError,
+  }) async {
+    final now = DateTime.now();
+
+    if (nonRecoverableError == true && id != null && entry != null) {
+      final oplog = await isar.opLogs.filter().idEqualTo(id).findFirst();
+      if (oplog == null) return;
+      oplog.syncedUp = true;
+      oplog.syncedDown = true;
+      oplog.syncedDownOn = now;
+      oplog.syncedUpOn = now;
+      isar.writeTxnSync(() {
+        isar.opLogs.putSync(oplog);
+      });
+    } else if (entry != null) {
+      if (entry.id == null) return;
+      final oplog = await isar.opLogs.get(entry.id!);
+      if (oplog == null) return;
+      oplog.syncedUp = true;
+      oplog.syncedUpOn = now;
+      isar.writeTxnSync(() {
+        isar.opLogs.putSync(oplog);
+      });
+    } else if (id != null) {
+      final oplog = await isar.opLogs.get(id);
+      if (oplog == null) return;
+      oplog.syncedUp = true;
+      oplog.syncedUpOn = now;
+      isar.writeTxnSync(() {
+        isar.opLogs.putSync(oplog);
+      });
+    } else if (clientReferenceId != null) {
+      final oplog = await isar.opLogs
+          .filter()
+          .clientReferenceIdEqualTo(clientReferenceId)
+          .findFirst();
+      if (oplog == null) return;
+      oplog.syncedUp = true;
+      oplog.syncedUpOn = now;
+      isar.writeTxnSync(() {
+        isar.opLogs.putSync(oplog);
+      });
+    } else {
+      throw AppException('Invalid arguments');
+    }
+
+    return;
+  }
+
+  Future<void> updateServerGeneratedIds({
+    required UpdateServerGeneratedIdModel model,
+  }) async {
+    final opLogs = isar.opLogs
+        .filter()
+        .clientReferenceIdEqualTo(model.clientReferenceId)
+        .findAllSync();
+
+    final updatedOpLogs = <OpLog>[];
+    for (final oplog in opLogs) {
+      final entry = OpLogEntry.fromOpLog<T>(oplog);
+
+      OpLogEntry updatedEntry = entry.copyWith(
+        serverGeneratedId: model.serverGeneratedId,
+        additionalIds: model.additionalIds,
+        rowVersion: model.rowVersion,
+        nonRecoverableError: model.nonRecoverableError,
+      );
+
+      if (entry.syncedUp) {
+        updatedEntry = updatedEntry.copyWith(
+          syncedDown: true,
+          syncedDownOn: DateTime.now(),
+        );
+      }
+
+      updatedOpLogs.add(updatedEntry.oplog);
+    }
+    if (updatedOpLogs.isNotEmpty) {
+      isar.writeTxnSync(() {
+        isar.opLogs.putAllSync(updatedOpLogs);
+      });
+    }
+
+    return;
+  }
+
+  Future<List<OpLogEntry<T>>> getEntries(
+    String clientReferenceId,
+    DataOperation operation,
+  ) async {
+    final oplog = isar.opLogs
+        .filter()
+        .operationEqualTo(operation)
+        .clientReferenceIdEqualTo(clientReferenceId)
+        .findAllSync();
+
+    if (oplog.isEmpty) {
+      throw AppException('OpLog not found for id: $clientReferenceId');
+    }
+
+    return oplog.map((e) => OpLogEntry.fromOpLog<T>(e)).toList();
+  }
+
+  Future<List<OpLog>> getSyncDownRetryList(
+    String clientReferenceId,
+  ) async {
+    final oplogs = isar.opLogs
+        .filter()
+        .clientReferenceIdEqualTo(clientReferenceId)
+        .findAllSync();
+
+    return oplogs;
+  }
+
+  Future<bool> updateSyncDownRetry(
+    String clientReferenceId,
+  ) async {
+    final oplogs = isar.opLogs
+        .filter()
+        .clientReferenceIdEqualTo(clientReferenceId)
+        .findAllSync();
+
+    if (oplogs.isEmpty) {
+      throw AppException('OpLog not found for id: $clientReferenceId');
+    }
+    bool markAsNonRecoverable = false;
+    final retryOpLogs = <OpLog>[];
+    for (final oplog in oplogs) {
+      final entry = OpLogEntry.fromOpLog<T>(oplog);
+      final syncDownRetryCount =
+          entry.syncDownRetryCount < 0 ? 0 : entry.syncDownRetryCount;
+      OpLogEntry updatedEntry = entry.copyWith(
+        syncDownRetryCount: syncDownRetryCount + 1,
+      );
+      if (updatedEntry.syncDownRetryCount >=
+          DigitDataModelSingleton().syncDownRetryCount) {
+        markAsNonRecoverable = true;
+        updatedEntry = updatedEntry.copyWith(nonRecoverableError: true);
+      }
+
+      retryOpLogs.add(updatedEntry.oplog);
+    }
+    if (retryOpLogs.isNotEmpty) {
+      isar.writeTxnSync(() {
+        isar.opLogs.putAllSync(retryOpLogs);
+      });
+    }
+
+    // Use the incremented retry count for delay calculation
+    final newRetryCount =
+        (oplogs.first.syncDownRetryCount < 0 ? 0 : oplogs.first.syncDownRetryCount) + 1;
+
+    if (newRetryCount <= 1) {
+      await Future.delayed(const Duration(seconds: 1));
+    } else {
+      await Future.delayed(Duration(
+        seconds: DigitDataModelSingleton().retryTimeInterval * newRetryCount,
+      ));
+    }
+
+    return markAsNonRecoverable;
+  }
+
+  String? getServerGeneratedId(T entity);
+
+  int? getRowVersion(T entity);
+
+  String getClientReferenceId(T entity);
+
+  bool? getNonRecoverableError(T entity);
+
+  T applyServerGeneratedIdToEntity(
+    T entity,
+    String serverGeneratedId,
+    int rowVersion,
+  );
+}
+
+class UpdateServerGeneratedIdModel {
+  final String clientReferenceId;
+  final String serverGeneratedId;
+  final DataOperation dataOperation;
+  final List<AdditionalId>? additionalIds;
+  final OpLogEntry? entry;
+  final int? rowVersion;
+  final bool? nonRecoverableError;
+
+  const UpdateServerGeneratedIdModel({
+    required this.clientReferenceId,
+    required this.serverGeneratedId,
+    required this.dataOperation,
+    this.additionalIds,
+    this.entry,
+    this.rowVersion,
+    this.nonRecoverableError,
+  });
+}

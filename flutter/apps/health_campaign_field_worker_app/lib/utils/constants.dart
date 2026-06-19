@@ -1,0 +1,535 @@
+import 'package:attendance_management/utils/utils.dart';
+import 'package:collection/collection.dart';
+import 'package:digit_data_model/data/repositories/local/attendance_logs.dart';
+import 'package:digit_data_model/data/repositories/local/attendance_register.dart';
+import 'package:digit_data_model/data/repositories/package_repository/local/hf_referral.dart';
+import 'package:digit_data_model/data/repositories/package_repository/local/household.dart';
+import 'package:digit_data_model/data/repositories/package_repository/local/household_member.dart';
+import 'package:digit_data_model/data/repositories/package_repository/local/pgr_service.dart';
+import 'package:digit_data_model/data/repositories/package_repository/local/project_beneficiary.dart';
+import 'package:digit_data_model/data/repositories/package_repository/local/referral.dart';
+import 'package:digit_data_model/data/repositories/package_repository/local/side_effect.dart';
+import 'package:digit_data_model/data/repositories/package_repository/local/stock.dart';
+import 'package:digit_data_model/data/repositories/package_repository/local/stock_reconciliation.dart';
+import 'package:digit_data_model/data/repositories/package_repository/local/task.dart';
+import 'package:digit_data_model/data/repositories/package_repository/oplog/oplog.dart';
+import 'package:digit_data_model/data/repositories/package_repository/remote/attendance_logs.dart';
+import 'package:digit_data_model/data/repositories/package_repository/remote/attendance_register.dart';
+import 'package:digit_data_model/data/repositories/package_repository/remote/hf_referral.dart';
+import 'package:digit_data_model/data/repositories/package_repository/remote/household.dart';
+import 'package:digit_data_model/data/repositories/package_repository/remote/household_member.dart';
+import 'package:digit_data_model/data/repositories/package_repository/remote/pgr_service.dart';
+import 'package:digit_data_model/data/repositories/package_repository/remote/project_beneficiary.dart';
+import 'package:digit_data_model/data/repositories/package_repository/remote/referral.dart';
+import 'package:digit_data_model/data/repositories/package_repository/remote/side_effect.dart';
+import 'package:digit_data_model/data/repositories/package_repository/remote/stock.dart';
+import 'package:digit_data_model/data/repositories/package_repository/remote/stock_reconciliation.dart';
+import 'package:digit_data_model/data/repositories/package_repository/remote/task.dart';
+import 'package:digit_data_model/data_model.dart';
+import 'package:digit_dss/digit_dss.dart';
+import 'package:digit_firebase_services/digit_firebase_services.dart'
+    as firebase_services;
+import 'package:digit_location_tracker/location_tracker.dart';
+import 'package:digit_ui_components/utils/app_logger.dart';
+import 'package:dio/dio.dart';
+import 'package:flutter/material.dart';
+import 'package:isar/isar.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:survey_form/survey_form.dart';
+import 'package:sync_service/sync_service_lib.dart';
+import 'package:transit_post/data/repositories/local/user_action.dart';
+import 'package:transit_post/data/repositories/oplog/oplog.dart';
+import 'package:transit_post/data/repositories/remote/user_action.dart';
+import 'package:transit_post/utils/utils.dart';
+
+import '../data/local_store/no_sql/schema/app_configuration.dart';
+import '../data/local_store/no_sql/schema/entity_mapper.dart';
+import '../data/local_store/no_sql/schema/localization.dart';
+import '../data/local_store/no_sql/schema/project_types.dart';
+import '../data/local_store/no_sql/schema/row_versions.dart';
+import '../data/local_store/no_sql/schema/service_registry.dart';
+import '../data/repositories/remote/downsync.dart';
+import '../data/sync_registry.dart';
+import '../data/sync_service_mapper.dart';
+import '../firebase_options.dart';
+import 'environment_config.dart';
+import 'utils.dart';
+
+class Constants {
+  late Future<Isar> _isar;
+  late String _version;
+  static final Constants _instance = Constants._();
+
+  Constants._() {
+    _isar = openIsar();
+  }
+
+  factory Constants() {
+    return _instance;
+  }
+
+  Future initialize(version) async {
+    await initializeAllMappers();
+    setInitialDataOfPackages();
+    await _initializeIsar(version);
+  }
+
+  String get version {
+    return _version;
+  }
+
+  Future<Isar> get isar {
+    return _isar;
+  }
+
+  Future<Isar> openIsar() async {
+    if (Isar.instanceNames.isEmpty) {
+      final directory = await getApplicationDocumentsDirectory();
+
+      return await Isar.open(
+        [
+          ServiceRegistrySchema,
+          LocalizationWrapperSchema,
+          AppConfigurationSchema,
+          OpLogSchema,
+          ProjectTypeListCycleSchema,
+          RowVersionListSchema,
+          DashboardConfigSchemaListSchema,
+          DashboardResponseSchema,
+        ],
+        name: 'HCM',
+        inspector: true,
+        directory: directory.path,
+      );
+    } else {
+      return await Future.value(Isar.getInstance());
+    }
+  }
+
+  static const String localizationApiPath = 'localization/messages/v1/_search';
+  // Modules to load initially (fetch from server and cache locally)
+  static const List<String> initialLocalizationModules = [
+    'digit-privacy-policy',
+    'hcm-login',
+    'hcm-common',
+    'hcm-scanner',
+    'hcm-beneficiary',
+    'hcm-peer-to-peer',
+    'hcm-transit-post',
+    'hcm-attendance',
+    'hcm-dashboard'
+  ];
+
+  // Modules to load when inside packages
+  static const List<String> packageLocalizationModules = [
+    'hcm-common',
+    'hcm-login',
+    'hcm-scanner',
+    'hcm-beneficiary',
+    'hcm-peer-to-peer',
+    'hcm-transit-post',
+    'hcm-attendance',
+    'hcm-dashboard'
+  ];
+
+  // Modules to load on home page and logout
+  static const List<String> homeLocalizationModules = [
+    'hcm-login',
+    'hcm-common',
+    'hcm-beneficiary',
+    'digit-privacy-policy',
+    'hcm-scanner',
+    'hcm-peer-to-peer',
+    'hcm-transit-post',
+    'hcm-attendance',
+    'hcm-dashboard'
+  ];
+  static const String surveyFormPreviewDateFormat = 'dd MMMM yyyy';
+  static const String defaultDateFormat = 'dd/MM/yyyy';
+  static const String defaultDateTimeFormat = 'dd/MM/yyyy hh:mm a';
+  static const String surveyFormViewDateFormat = 'dd/MM/yyyy hh:mm a';
+  static const String healthFacilitySurveyFormPrefix = 'HF_RF';
+
+  static const String boundaryLocalizationPath = 'rainmaker-boundary-admin';
+
+  static const String dashboardAnalyticsPath =
+      '/dashboard-analytics/dashboard/getChartV2';
+  static const String logoutUserPath = '/user/_logout';
+
+  static RegExp mobileNumberRegExp =
+      RegExp(r'^(?=.{10}$)[+]*[(]{0,1}[0-9]{1,4}[)]{0,1}[-\s\./0-9]*$');
+
+  static const String healthFacility = 'Health Facility';
+  static const String lgaBoundaryLevel = 'LGA';
+  static const String provincialBoundaryLevel = 'Provincia';
+  static const String centralFacility = 'Central Facility';
+  static const String stateBoundaryLevel = 'State';
+  static const String stateFacility = 'State Facility';
+  static const String lgaFacility = 'LGA Facility';
+  static const String deviceSwitch = 'DEVICE_SWITCH';
+  static const String other = 'OTHER';
+  static const String deviceSwitchReason = 'DEVICE_SWITCH_REASON';
+  static const String oldDeviceToken = 'OLD_TOKEN';
+  static const String newDeviceToken = 'NEW_TOKEN';
+  static const String deviceSelectionOtherReason = 'OTHERS';
+  static const String multiLoginService = 'MULTILOGIN';
+  static const String multiLoginEntity = 'MultiLogin';
+  static const String multiLoginSwitchOperation = 'switch';
+  static const String userActionService = 'USER-ACTION';
+  static const String userActionEntity = 'userAction';
+
+  static const String downloadAnimation =
+      'assets/animated_json/download_animation.json';
+
+  static const String downloadSuccessAnimation =
+      'assets/animated_json/download_success.json';
+
+  static List<LocalRepository> getLocalRepositories(
+    LocalSqlDataStore sql,
+    Isar isar,
+  ) {
+    return [
+      FacilityLocalRepository(sql, FacilityOpLogManager(isar)),
+      ProjectLocalRepository(sql, ProjectOpLogManager(isar)),
+      ProjectStaffLocalRepository(sql, ProjectStaffOpLogManager(isar)),
+      IndividualLocalRepository(sql, IndividualOpLogManager(isar)),
+      ProjectFacilityLocalRepository(sql, ProjectFacilityOpLogManager(isar)),
+      ServiceDefinitionLocalRepository(
+        sql,
+        ServiceDefinitionOpLogManager(isar),
+      ),
+      ServiceLocalRepository(
+        sql,
+        ServiceOpLogManager(isar),
+      ),
+      ProjectResourceLocalRepository(
+        sql,
+        ProjectResourceOpLogManager(isar),
+      ),
+      ProductVariantLocalRepository(
+        sql,
+        ProductVariantOpLogManager(isar),
+      ),
+      BoundaryLocalRepository(
+        sql,
+        BoundaryOpLogManager(isar),
+      ),
+      HouseholdMemberLocalRepository(sql, HouseholdMemberOpLogManager(isar)),
+      HouseholdLocalRepository(sql, HouseholdOpLogManager(isar)),
+      ProjectBeneficiaryLocalRepository(
+        sql,
+        ProjectBeneficiaryOpLogManager(
+          isar,
+        ),
+      ),
+      TaskLocalRepository(sql, TaskOpLogManager(isar)),
+      SideEffectLocalRepository(sql, SideEffectOpLogManager(isar)),
+      ReferralLocalRepository(sql, ReferralOpLogManager(isar)),
+      StockLocalRepository(sql, StockOpLogManager(isar)),
+      StockReconciliationLocalRepository(
+        sql,
+        StockReconciliationOpLogManager(isar),
+      ),
+      AttendanceLocalRepository(
+        sql,
+        AttendanceOpLogManager(isar),
+      ),
+      AttendanceLogsLocalRepository(
+        sql,
+        AttendanceLogOpLogManager(isar),
+      ),
+      HFReferralLocalRepository(
+        sql,
+        HFReferralOpLogManager(isar),
+      ),
+      PgrServiceLocalRepository(
+        sql,
+        PgrServiceOpLogManager(isar),
+      ),
+      LocationTrackerLocalBaseRepository(
+          sql, LocationTrackerOpLogManager(isar)),
+      UserActionLocalRepository(sql, UserActionOpLogManager(isar)),
+    ];
+  }
+
+  Future<void> _initializeIsar(version) async {
+    _isar = Constants().isar;
+
+    final isar = await _isar;
+    final appConfigs = await isar.appConfigurations.where().findAll();
+    final config = appConfigs.firstOrNull;
+
+    // Always initialize Firebase Core (required for FCM, analytics, etc.)
+    await firebase_services.initialize(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+
+    final enableCrashlytics =
+        config?.firebaseConfig?.enableCrashlytics ?? false;
+    if (enableCrashlytics) {
+      await firebase_services.initialize(
+        options: DefaultFirebaseOptions.currentPlatform,
+        onErrorMessage: (value) {
+          AppLogger.instance.error(title: 'CRASHLYTICS', message: value);
+        },
+      );
+    }
+
+    _version = version;
+  }
+
+  static const String closedHouseholdSvg =
+      'assets/icons/svg/closed_household.svg';
+
+  static const String beneficiaryIdDownload =
+      'assets/icons/svg/beneficiary_ids.svg';
+
+  static List<RemoteRepository> getRemoteRepositories(
+    Dio dio,
+    Map<DataModelType, Map<ApiOperation, String>> actionMap,
+  ) {
+    final remoteRepositories = <RemoteRepository>[];
+    for (final value in DataModelType.values) {
+      if (!actionMap.containsKey(value)) {
+        continue;
+      }
+
+      final actions = actionMap[value]!;
+
+      remoteRepositories.addAll([
+        if (value == DataModelType.facility)
+          FacilityRemoteRepository(dio, actionMap: actions),
+        if (value == DataModelType.productVariant)
+          ProductVariantRemoteRepository(dio, actionMap: actions),
+        if (value == DataModelType.boundary)
+          BoundaryRemoteRepository(dio, actionMap: actions),
+        if (value == DataModelType.serviceDefinition)
+          ServiceDefinitionRemoteRepository(dio, actionMap: actions),
+        if (value == DataModelType.projectResource)
+          ProjectResourceRemoteRepository(dio, actionMap: actions),
+        if (value == DataModelType.service)
+          ServiceRemoteRepository(dio, actionMap: actions),
+        if (value == DataModelType.projectStaff)
+          ProjectStaffRemoteRepository(dio, actionMap: actions),
+        if (value == DataModelType.projectProductVariant)
+          ProjectProductVariantRemoteRepository(dio, actionMap: actions),
+        if (value == DataModelType.projectFacility)
+          ProjectFacilityRemoteRepository(dio, actionMap: actions),
+        if (value == DataModelType.individual)
+          IndividualRemoteRepository(dio, actionMap: actions),
+        if (value == DataModelType.downsync)
+          DownsyncRemoteRepository(dio, actionMap: actions),
+        if (value == DataModelType.stock)
+          StockRemoteRepository(dio, actionMap: actions),
+        if (value == DataModelType.stockReconciliation)
+          StockReconciliationRemoteRepository(dio, actionMap: actions),
+        if (value == DataModelType.household)
+          HouseholdRemoteRepository(dio, actionMap: actions),
+        if (value == DataModelType.projectBeneficiary)
+          ProjectBeneficiaryRemoteRepository(dio, actionMap: actions),
+        if (value == DataModelType.task)
+          TaskRemoteRepository(dio, actionMap: actions),
+        if (value == DataModelType.householdMember)
+          HouseholdMemberRemoteRepository(dio, actionMap: actions),
+        if (value == DataModelType.sideEffect)
+          SideEffectRemoteRepository(dio, actionMap: actions),
+        if (value == DataModelType.referral)
+          ReferralRemoteRepository(dio, actionMap: actions),
+        if (value == DataModelType.attendanceRegister)
+          AttendanceRemoteRepository(dio, actionMap: actions),
+        if (value == DataModelType.attendance)
+          AttendanceLogRemoteRepository(dio, actionMap: actions),
+        if (value == DataModelType.hFReferral)
+          HFReferralRemoteRepository(dio, actionMap: actions),
+        if (value == DataModelType.complaints)
+          PgrServiceRemoteRepository(dio, actionMap: actions),
+        if (value == DataModelType.userLocation)
+          LocationTrackerRemoteRepository(dio, actionMap: actions),
+        if (value == DataModelType.userAction)
+          UserActionRemoteRepository(dio, actionMap: actions),
+      ]);
+    }
+
+    return remoteRepositories;
+  }
+
+  static String getEndPoint({
+    required List<ServiceRegistry> serviceRegistry,
+    required String service,
+    required String action,
+    required String entityName,
+  }) {
+    final actionResult = serviceRegistry
+        .firstWhereOrNull((element) => element.service == service)
+        ?.actions
+        .firstWhereOrNull((element) => element.entityName == entityName)
+        ?.path;
+
+    return actionResult ?? '';
+  }
+
+  static String getMultiLoginEndPoint({
+    required List<ServiceRegistry> serviceRegistry,
+    required String service,
+    required String action,
+    required String entityName,
+  }) {
+    final actionResult = serviceRegistry
+        .firstWhereOrNull((element) => element.service == service)
+        ?.actions
+        .firstWhereOrNull((element) =>
+            element.entityName == entityName && element.action == action)
+        ?.path;
+
+    return actionResult ?? '';
+  }
+
+  static String getNotificationEndPoint({
+    required List<ServiceRegistry> serviceRegistry,
+    required String service,
+    required String action,
+    required String entityName,
+  }) {
+    final actionResult = serviceRegistry
+        .firstWhereOrNull((element) => element.service == service)
+        ?.actions
+        .firstWhereOrNull((element) =>
+    element.entityName == entityName && element.action == action)
+        ?.path;
+
+    return actionResult ?? '';
+  }
+
+  static List<KeyValue> yesNo = [
+    KeyValue('CORE_COMMON_YES', true),
+    KeyValue('CORE_COMMON_NO', false),
+  ];
+
+  void setInitialDataOfPackages() {
+    DigitDataModelSingleton().setData(
+        syncDownRetryCount: envConfig.variables.syncDownRetryCount,
+        retryTimeInterval: envConfig.variables.retryTimeInterval,
+        tenantId: envConfig.variables.tenantId,
+        entityMapper: EntityMapper(),
+        errorDumpApiPath: envConfig.variables.dumpErrorApiPath,
+        hierarchyType: envConfig.variables.hierarchyType);
+    LocationTrackerSingleton()
+        .setTenantId(tenantId: envConfig.variables.tenantId);
+    TransitPostSingleton().setTenantId(envConfig.variables.tenantId);
+    AttendanceSingleton().setTenantId(envConfig.variables.tenantId);
+    SyncServiceSingleton().setData(
+      syncDownRetryCount: envConfig.variables.syncDownRetryCount,
+      persistenceConfiguration: PersistenceConfiguration.offlineFirst,
+      entityMapper: SyncServiceMapper(),
+    );
+    SyncServiceSingleton().setRegistries(SyncServiceRegistry());
+    SyncServiceSingleton().registries?.registerSyncRegistries(
+        {DataModelType.complaints: (remote) => CustomSyncRegistry(remote)});
+  }
+}
+
+/// By using this key, we can push pages without context
+final scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
+
+class KeyValue {
+  String label;
+  dynamic key;
+
+  KeyValue(this.label, this.key);
+}
+
+class StatusKeys {
+  bool isNotEligible;
+  bool isBeneficiaryRefused;
+  bool isBeneficiaryReferred;
+  bool isStatusReset;
+
+  StatusKeys(this.isNotEligible, this.isBeneficiaryRefused,
+      this.isBeneficiaryReferred, this.isStatusReset);
+}
+
+class RequestInfoData {
+  static const String apiId = 'hcm';
+  static const String ver = '.01';
+  static num ts = DateTime.now().millisecondsSinceEpoch;
+  static const did = "1";
+  static const key = "";
+  static String? authToken;
+}
+
+class Modules {
+  static const String localizationModule = "LOCALIZATION_MODULE";
+}
+
+const String noResultSvg = 'assets/icons/svg/no_result.svg';
+const String mySurveyFormSvg = 'assets/icons/svg/mychecklist.svg';
+const String peerSearchSvg = 'assets/icons/svg/search_peers.svg';
+
+const String searchingLottie = 'assets/animated_json/scanning_devices.json';
+const String dataTransfer = 'assets/animated_json/data_transfer.json';
+const String receiveData = 'assets/animated_json/download_animation.json';
+const String downloadSuccess = 'assets/animated_json/download_success.json';
+const String failedLottie = 'assets/animated_json/failed_animation.json';
+
+enum DigitProgressDialogType {
+  inProgress,
+  dataFound,
+  success,
+  failed,
+  insufficientStorage,
+  checkFailed,
+  pendingSync,
+}
+
+class DownloadProgressData {
+  final double progress;
+  final String boundaryName;
+  final int syncedCount;
+  final int totalCount;
+  final int currentIndex;
+  final int totalBoundaries;
+
+  const DownloadProgressData({
+    required this.progress,
+    required this.boundaryName,
+    required this.syncedCount,
+    required this.totalCount,
+    required this.currentIndex,
+    required this.totalBoundaries,
+  });
+}
+
+class DownloadBeneficiary {
+  String title;
+  ProjectModel projectModel;
+  String get projectId => projectModel.id;
+  List<BoundaryModel> boundaries;
+  int? pendingSyncCount;
+  int? syncCount;
+  int? totalCount;
+  String? content;
+  int? batchSize;
+  String? primaryButtonLabel;
+  String? secondaryButtonLabel;
+  String? prefixLabel;
+  String? suffixLabel;
+  AppConfiguration? appConfiguartion;
+  Map<String, int> boundaryCounts;
+
+  DownloadBeneficiary({
+    required this.title,
+    required this.projectModel,
+    required this.boundaries,
+    this.appConfiguartion,
+    this.pendingSyncCount,
+    this.batchSize,
+    this.syncCount,
+    this.totalCount,
+    this.content,
+    this.primaryButtonLabel,
+    this.secondaryButtonLabel,
+    this.prefixLabel,
+    this.suffixLabel,
+    this.boundaryCounts = const {},
+  });
+}

@@ -1,0 +1,1554 @@
+library i18;
+
+const common = Common();
+const attendance = Attendance();
+const login = Login();
+const forgotPassword = ForgotPassword();
+const home = Home();
+const beneficiaryId = BeneficiaryID();
+const dataShare = DataShare();
+const acknowledgementSuccess = AcknowledgementSuccess();
+const adverseEvents = AdverseEvents();
+const projectSelection = ProjectSelection();
+const complaints = Complaints();
+const syncDialog = SyncDialog();
+const homeShowcase = HomeShowcase();
+const privacyPolicy = PrivacyPolicy();
+const dashBoard = Dashboard();
+
+const householdLocationShowcase = HouseholdLocationShowcase();
+const householdLocation = HouseholdLocation();
+const searchBeneficiary = SearchBeneficiary();
+const individualDetails = IndividualDetails();
+const beneficiaryDetails = BeneficiaryDetails();
+
+const selectStockShowcase = SelectStockShowcase();
+const warehouseDetailsShowcase = WarehouseDetailsShowcase();
+const stockDetailsReceiptShowcase = StockDetailsReceiptShowcase();
+const stockDetailsIssuedShowcase = StockDetailsIssuedShowcase();
+const selectSurveyFormShowcase = SelectSurveyFormShowcase();
+const stockDetailsReturnedShowcase = StockDetailsReturnedShowcase();
+const stockReconciliationShowcase = StockReconciliationShowcase();
+const stockReconciliationMetrics = StockReconciliationMetrics();
+
+class Attendance {
+  const Attendance();
+
+  String get invalidQRCode => 'INVALID_QR_CODE';
+
+  String get viewAttendanceLabel => 'HOME_VIEW_ATTENDANCE_LABEL';
+
+  String get campaignNameLabel => 'CAMPAIGN_NAME_LABEL';
+
+  String get eventTypeLabel => 'EVENT_TYPE_LABEL';
+
+  String get staffCountLabel => 'STAFF_COUNT_LABEL';
+
+  String get startDateLabel => 'START_DATE_LABEL';
+
+  String get endDateLabel => 'END_DATE_LABEL';
+
+  String get statusLabel => 'STATUS_LABEL';
+
+  String get attendanceCompletionLabel => 'ATTENDANCE_COMPLETION_LABEL';
+
+  String get noAttendeesEnrolledMessage =>
+      'NO_ATTENDEES_ENROLLED_TO_THE_REGISTER';
+
+  String get registerNotStarted => 'REGISTER_NOT_STARTED_MSG';
+
+  String get saveAndMarkLaterLabel => 'SAVE_AND_MARK_LATER_LABEL';
+
+  String get pleaseMarkAttForIndividuals =>
+      'PLZ_MARK_ATTENDANCE_FOR_INDIVIDUALS';
+
+  String get draftSavedMessage => 'DRAFT_SAVED_MESSAGE';
+
+  String get attendanceSubmittedSuccessMsg =>
+      'ATTENDANCE_SUBMITTED_SUCCESS_MSG';
+
+  String get selectSession => 'SESSION_SELECTION_HEADER';
+
+  String get sessionRadioLabel => 'SESSION_SELECT_RADIO_LABEL';
+
+  String get dateOfSession => 'SESSION_DATE_OF_SESSION';
+
+  String get sessionDescForRadio => 'SESSION_RADIO_INFO';
+
+  String get missedAttendanceInfo => 'MISSED_ATTENDANCE_INFO';
+
+  String get missedAttendanceDesc => 'MISSED_ATTENDANCE_DESC';
+
+  String get viewAttendance => 'VIEW_ATTENDANCE';
+
+  String get openRegister => 'ATTENDANCE_OPEN_REGISTER';
+
+  String get markAttendance => 'BUTTON_MARK_ATTENDANCE';
+
+  String get name => 'TABLE_HEADER_NAME';
+
+  String get tableHeaderAttendance => 'TABLE_HEADER_ATTENDANCE';
+
+  String get userId => 'TABLE_HEADER_USERID';
+
+  String get individualId => 'INDIVIDUAL_ID_NUMBER';
+
+  String get markAttendanceLabel => "LABEL_MARK_ATTENDANCE";
+
+  String get markedAsPresent => "MARKED_AS_PRESENT";
+
+  String get attendanceUnMarked => "UN_MARKED";
+
+  String get markedAsAbsent => "MARKED_AS_ABSENT";
+
+  String get closeButton => "CLOSE_BUTTON";
+
+  String get retryButton => "RETRY_BUTTON";
+
+  String get proceed => "PROCEED_BUTTON";
+
+  String get confirmationLabel => "CONFIRMATION_LABEL";
+
+  String get confirmationDesc => "CONFIRMATION_DESCRIPTION";
+
+  String get confirmationDescNote => "CONFIRMATION_DESCRIPTION_NOTE";
+
+  String get goBackButton => "GO_BACK_BUTTON";
+
+  String get goHome => "GO_TO_HOME_SCREEN";
+
+  String get morningSession => "MORNING_SESSION";
+
+  String get eveningSession => "EVENING_SESSION";
+
+  String get goToAttendanceRegisters => "GO_TO_ATTENDANCE_REGISTERS";
+
+  String get reasonForManualAttendance =>
+      "REASON_FOR_MARKING_ATTENDANCE_MANUALLY";
+
+  String get selectReason => "SELECT_REASON";
+
+  String get reasonForManualAttendanceDesc =>
+      "REASON_FOR_MARKING_ATTENDANCE_MANUALLY_DESC";
+
+  String get plzSelectSession => "PLZ_SELECT_THE_SESSION";
+
+  String get checkAttendanceMark => "CHECK_ATTENDANCE_MARK";
+
+  String get backToAttendanceManager => "BACK_TO_ATTENDANCE_MANAGER";
+
+  String get attendanceRegistarLabel => "ATTENDANCE_REGISTAR_LABEL";
+
+  String get somethingWentWrong => "SOMETHING_WENT_WRONG";
+
+  String get pleaseTryAgain => "PLEASE_TRY_AGAIN";
+
+  String get retry => "CORE_COMMON_NULL";
+
+  String get missedAttendanceHeader => "MISSED_ATTENDANCE_HEADER";
+
+  String get missedAttendanceDescription => "MISSED_ATTENDANCE_DESCRIPTION";
+
+  String get halfDay => 'HALF_DAY';
+
+  String get present => 'PRESENT';
+
+  String get absent => 'ABSENT';
+
+  String get markAsAbsent => 'MARK_AS_ABSENT';
+
+  String get ctaDateChangeProceed => 'DATE_CHANGE_PROCEED';
+
+  String get scanAnotherQR => 'SCAN_ANOTHER_QR';
+
+  String get actionRequired => "ACTION_REQUIRED";
+
+  String get qrCreatedTime => 'QR_CREATED_TIME';
+
+  String get scannerNotAvailableTitle => 'SCANNER_NOT_AVAILABLE_TITLE';
+
+  String get scannerNotAvailableDescription =>
+      'SCANNER_NOT_AVAILABLE_DESCRIPTION';
+
+  String get manualScanLabel => 'ATTENDANCE_MANUAL_SCAN';
+
+  String get enterUniqueCode => 'ENTER_UNIQUE_CODE';
+
+  String get userQRTimeExpiredError => 'USER_QR_TIME_EXPIRED_ERROR';
+
+  String get qrAlreadyScanned => 'USER_QR_ALREADY_SCANNED';
+
+  String get uniqueCodeLabel => 'UNIQUE_CODE_LABEL';
+
+  String get attendeeNotFound => 'ATTENDEE_NOT_FOUND';
+
+  String get failedToScanQR => 'QR_SCANNER_FAILED';
+
+  String get markAttendanceManually => 'MARK_ATTENDANCE_MANUALLY';
+
+  String get validationRequiredError => 'COMMENT_VALIDATION_REQUIRED_ERROR';
+}
+
+class StockReconciliationMetrics {
+  const StockReconciliationMetrics();
+
+  String get stockMetrics => 'STOCK_METRICS';
+
+  String get dateOfReconciliation => 'STOCK_RECONCILIATION_DATE';
+
+  String get stockReceived => 'STOCK_RECONCILIATION_STOCK_RECEIVED';
+
+  String get stockIssued => 'STOCK_RECONCILIATION_STOCK_ISSUED';
+
+  String get stockReturned => 'STOCK_RECONCILIATION_STOCK_RETURNED';
+
+  String get stockLost => 'STOCK_RECONCILIATION_STOCK_LOST';
+
+  String get stockDamaged => 'STOCK_RECONCILIATION_STOCK_DAMAGED';
+
+  String get stockExcess => 'STOCK_RECONCILIATION_STOCK_EXCESS';
+
+  String get stockLess => 'STOCK_RECONCILIATION_STOCK_LESS';
+
+  String get stockOnHand => 'STOCK_RECONCILIATION_STOCK_ON_HAND';
+}
+
+const surveyFormDataShowcase = SurveyFormDataShowcase();
+const surveyFormListShowcase = SurveyFormListShowcase();
+const complaintTypeShowcase = ComplaintTypeShowcase();
+const complaintsDetailsShowcase = ComplaintsDetailsShowcase();
+const complaintsDetailsViewShowcase = ComplaintsDetailsViewShowcase();
+const complaintsInboxShowcase = ComplaintsInboxShowcase();
+
+const nonMobileUser = NonMobileUser();
+const databaseError = DatabaseError();
+
+class Common {
+  const Common();
+
+  String get coreCommonContinue => 'CORE_COMMON_CONTINUE';
+  String get permissionContinue => 'PERMISSION_CONTINUE';
+  String get coreCommonWarning => 'CORE_COMMON_WARNING';
+  String get logOutWarningMsg => 'LOG_OUT_WARNING_MESSAGE';
+
+  String get coreCommonOr => 'CORE_COMMON_OR';
+  String get commentKey => 'COMMENT_KEY';
+  String get locationLabel => 'LOCATION_LABEL';
+
+  String get coreCommonAge => 'CORE_COMMON_AGE';
+
+  String get coreCommonName => 'CORE_COMMON_NAME';
+
+  String get coreCommonEmailId => 'CORE_COMMON_EMAIL_ID';
+
+  String get coreCommonGender => 'CORE_COMMON_GENDER';
+
+  String get coreCommonMobileNumber => 'CORE_COMMON_MOBILE_NUMBER';
+
+  String get coreCommonSubmit => 'CORE_COMMON_SUBMIT';
+
+  String get coreCommonSave => 'CORE_COMMON_SAVE';
+
+  String get coreCommonCancel => 'CORE_COMMON_CANCEL';
+
+  String get coreCommonDelete => 'CORE_COMMON_DELETE';
+
+  String get coreCommonQuantityDistributed =>
+      'CORE_COMMON_QUANTITY_DISTRIBUTED';
+
+  String get coreCommonDeleteResource => 'CORE_COMMON_DELETE_RESOURCE';
+
+  String get coreCommonDeleteResourceConfirmation =>
+      'CORE_COMMON_DELETE_RESOURCE_CONFIRMATION';
+
+  String get corecommonRequired => 'CORE_COMMON_REQUIRED';
+
+  String get coreCommonReasonRequired => 'CORE_COMMON_REASON_REQUIRED';
+
+  String get corecommonclose => 'CORE_COMMON_CLOSE';
+
+  String get coreCommonRetry => 'CORE_COMMON_RETRY';
+
+  String get failedToFetch => 'CORE_COMMON_FAILED_TO_FETCH';
+
+  String get coreCommonOk => 'CORE_COMMON_OK';
+
+  String get coreCommonNA => 'CORE_COMMON_NA';
+
+  String get coreCommonProfile => 'CORE_COMMON_PROFILE';
+
+  String get coreCommonLogout => 'CORE_COMMON_LOGOUT';
+
+  String get coreCommonBack => 'CORE_COMMON_BACK';
+
+  String get coreCommonHelp => 'CORE_COMMON_HELP';
+
+  String get coreCommonHome => 'CORE_COMMON_HOME';
+
+  String get coreCommonGoHome => 'CORE_COMMON_GO_HOME';
+
+  String get coreCommonAttention => 'CORE_COMMON_ATTENTION';
+
+  String get coreCommonViewDownloadedData => 'CORE_COMMON_VIEW_DOWNLOADED_DATA';
+
+  String get coreCommonlanguage => 'CORE_COMMON_LANGUAGE';
+
+  String get coreCommonSyncProgress => 'CORE_COMMON_SYNC_PROGRESS';
+
+  String get coreCommonDataSynced => 'CORE_COMMON_DATA_SYNCED';
+
+  String get coreCommonDataSyncFailed => 'CORE_COMMON_DATA_SYNC_FAILED';
+
+  String get coreCommonDataSyncRetry => 'CORE_COMMON_DATA_SYNC_RETRY';
+
+  String get connectionLabel => 'CORE_COMMON_CONNECTION_LABEL';
+
+  String get connectionContent => 'CORE_COMMON_CONNECTION_CONTENT';
+
+  String get coreCommonSkip => 'CORE_COMMON_SKIP';
+
+  String get coreCommonNext => 'CORE_COMMON_NEXT';
+
+  String get coreCommonYes => 'CORE_COMMON_YES';
+
+  String get coreCommonNo => 'CORE_COMMON_NO';
+
+  String get coreCommonGoback => 'CORE_COMMON_GO_BACK';
+
+  String get coreCommonRequiredItems => 'CORE_COMMON_REQUIRED_ITEMS';
+
+  String get min2CharsRequired => 'MIN_2_CHARS_REQUIRED';
+
+  String get maxCharsRequired => 'MAX_CHARS_ALLOWED';
+
+  String get maxValue => 'MAX_VALUE_ALLOWED';
+
+  String get minValue => 'MIN_VALUE_ALLOWED';
+
+  String get noResultsFound => 'NO_RESULTS_FOUND';
+
+  String get coreCommonSyncInProgress => 'CORE_COMMON_SYNC_IN_PROGRESS';
+
+  String get facilitySearchHeaderLabel => 'FACILITY_SEARCH_HEADER_LABEL';
+
+  String get projectFacilitySearchHeaderLabel =>
+      'PROJECT_FACILITY_SEARCH_HEADER_LABEL';
+
+  String get coreCommonDownload => 'CORE_COMMON_DOWNLOAD';
+
+  String get coreCommonDownloadFailed => 'CORE_COMMON_DOWNLOAD_FAILED';
+
+  String get coreCommonDownloadCompleted => 'CORE_COMMON_DOWNLOAD_COMPLETED';
+
+  String get noMatchFound => 'CORE_COMMON_NO_MATCH_FOUND';
+
+  String get maxBoundarySelectionReached =>
+      'CORE_COMMON_MAX_BOUNDARY_SELECTION_REACHED';
+
+  String get selectCurrentBoundary => 'CORE_COMMON_SELECT_CURRENT_BOUNDARY';
+
+  String get wantToChooseAnotherBoundary =>
+      'CORE_COMMON_WANT_TO_CHOOSE_ANOTHER_BOUNDARY';
+
+  String get chooseAnotherBoundary => 'CORE_COMMON_CHOOSE_ANOTHER_BOUNDARY';
+
+  String get scanBales => 'CORE_COMMON_SCAN_BALES';
+
+  String get ageInMonths => 'AGE_IN_MONTHS_LABEL';
+
+  String get locationCapturing => 'CAPTURING_LOCATION';
+
+  String get profileUpdateSuccess => 'PROFILE_UPDATE_SUCCESS';
+
+  String get coreCommonError => 'CORE_COMMON_UNKNOWN_ERROR_OCCURRED';
+
+  String get coreCommonErrorDescription =>
+      'CORE_COMMON_UNKNOWN_ERROR_DESCRIPTION';
+
+  String get permissionsAlert => 'PERMISSIONS_ALERT';
+
+  String get enablePermissionCheckbox => 'ENABLE_PERMISSION_CHECKBOX';
+
+  String get allowPermissions => 'CORE_COMMON_ALLOW_PERMISSIONS';
+
+  String get grantPermission => 'GRANT_PERMISSION';
+
+  String get permissionDeniedOpenSettings => 'PERMISSION_DENIED_OPEN_SETTINGS';
+
+  String get openSettings => 'OPEN_SETTINGS';
+
+  String get permissionNotGranted => 'CORE_COMMON_PERMISSION_NOT_GRANTED';
+
+  String get permissionGranted => 'CORE_COMMON_PERMISSION_GRANTED';
+
+  String get lowRamWarning => 'CORE_COMMON_LOW_RAM_WARNING';
+
+  String get lowRamWarningTitle => 'CORE_COMMON_LOW_RAM_WARNING_TITLE';
+
+  String get lowRamWarningDesc => 'CORE_COMMON_LOW_RAM_WARNING_DESC';
+
+  String get qrInventory => 'QR_INVENTORY';
+
+  String get qrAttendance => 'QR_ATTENDANCE';
+
+  String get progressIndicatorPrefixLabelHFReferral =>
+      'PROGRESS_INDICATOR_PREFIX_LABEL_HFREFERRAL';
+
+  String get stockDataFound => 'STOCK_DATA_FOUND';
+
+  String get stockNoDataFound => 'STOCK_NO_DATA_FOUND';
+
+  String get stockDataFoundContent => 'STOCK_DATA_FOUND_CONTENT';
+
+  String get stockNoDataFoundContent => 'STOCK_NO_DATA_FOUND_CONTENT';
+
+  String get coreCommonDownloading => 'CORE_COMMON_DOWNLOADING';
+
+  String get allowAccess => 'CORE_COMMON_ALLOW_ACCESS';
+
+  String get accessRequired => 'CORE_COMMON_ACCESS_REQUIRED';
+
+  String get accessPermissionDialogDesc =>
+      'CORE_COMMON_ACCESS_PERMISSION_DIALOG_DESC';
+
+  String get allowBackgroundActivityDesc =>
+      'PERMISSION_HANDLER_ALLOW_BACKGROUND_ACTIVITY';
+
+  String get permissionNotificationDesc =>
+      'CORE_COMMON_PERMISSION_NOTIFICATION_DESC';
+
+  String get permissionLocationDesc => 'CORE_COMMON_PERMISSION_LOCATION_DESC';
+
+  String get permissionBluetoothScanDesc =>
+      'CORE_COMMON_PERMISSION_BLUETOOTHSCAN_DESC';
+
+  String get permissionNearbyWifiDevicesDesc =>
+      'CORE_COMMON_PERMISSION_NEARBYWIFIDEVICES_DESC';
+
+  String get permissionCameraDesc => 'CORE_COMMON_PERMISSION_CAMERA_DESC';
+
+  String get beneficiaryNotFound => 'CORE_COMMON_BENEFICIARY_NOT_FOUND';
+
+  String get beneficiaryNotFoundDesc =>
+      'CORE_COMMON_BENEFICIARY_NOT_FOUND_DESC';
+}
+
+class HomeShowcase {
+  const HomeShowcase();
+
+  String get distributorProgressBar {
+    return 'DISTRIBUTOR_HOME_SHOWCASE_PROGRESS_BAR';
+  }
+
+  String get distributorBeneficiaries {
+    return 'DISTRIBUTOR_HOME_SHOWCASE_BENEFICIARIES';
+  }
+
+  String get distributorFileComplaint {
+    return 'DISTRIBUTOR_HOME_SHOWCASE_FILE_COMPLAINT';
+  }
+
+  String get beneficiaryReferral {
+    return 'HF_HOME_SHOWCASE_BENEFICIARY_LABEL';
+  }
+
+  String get manageAttendance {
+    return 'HF_HOME_SHOWCASE_MANAGE_ATTENDANCE';
+  }
+
+  String get distributorSyncData {
+    return 'DISTRIBUTOR_HOME_SHOWCASE_SYNC_DATA';
+  }
+
+  String get stockSyncData {
+    return 'DISTRIBUTOR_HOME_SHOWCASE_STOCK_SYNC_DATA';
+  }
+
+  String get warehouseManagerManageStock {
+    return 'WAREHOUSE_MANAGER_HOME_SHOWCASE_MANAGE_STOCK';
+  }
+
+  String get wareHouseManagerStockReconciliation {
+    return 'WAREHOUSE_MANAGER_HOME_SHOWCASE_STOCK_RECONCILIATION';
+  }
+
+  String get warehouseManagerFileComplaint {
+    return 'WAREHOUSE_MANAGER_HOME_SHOWCASE_FILE_COMPLAINT';
+  }
+
+  String get warehouseManagerSyncData {
+    return 'WAREHOUSE_MANAGER_HOME_SHOWCASE_SYNC_DATA';
+  }
+
+  String get supervisorProgressBar {
+    return 'SUPERVISOR_HOME_SHOWCASE_PROGRESS_BAR';
+  }
+
+  String get supervisorMySurveyForm {
+    return 'SUPERVISOR_HOME_SHOWCASE_MY_CHECKLIST';
+  }
+
+  String get supervisorComplaints {
+    return 'SUPERVISOR_HOME_SHOWCASE_COMPLAINTS';
+  }
+
+  String get supervisorSyncData {
+    return 'SUPERVISOR_HOME_SHOWCASE_SYNC_DATA';
+  }
+
+  String get wareHouseManagerChecklist {
+    return 'WAREHOUSE_MANAGER_HOME_SHOWCASE_CHECKLIST';
+  }
+
+  String get inventoryReport {
+    return 'WAREHOUSE_MANAGER_HOME_SHOWCASE_INVENTORY_REPORT';
+  }
+
+  String get deleteAll {
+    return 'WAREHOUSE_MANAGER_HOME_SHOWCASE_DELETE_ALL';
+  }
+
+  String get clf {
+    return "COMMUNAL_LIVING_FACILITY_SHOWCASE";
+  }
+}
+
+class SelectStockShowcase {
+  const SelectStockShowcase();
+
+  String get recordStockReceipt {
+    return 'SELECT_STOCK_SHOWCASE_RECORD_STOCK_RECEIPT';
+  }
+
+  String get recordStockIssued {
+    return 'SELECT_STOCK_SHOWCASE_RECORD_STOCK_ISSUED';
+  }
+
+  String get recordStockReturned {
+    return 'SELECT_STOCK_SHOWCASE_RECORD_STOCK_RETURNED';
+  }
+}
+
+class WarehouseDetailsShowcase {
+  const WarehouseDetailsShowcase();
+
+  String get dateOfReceipt {
+    return 'WAREHOUSE_DETAILS_SHOWCASE_DATE_OF_RECEIPT';
+  }
+
+  String get administrativeUnit {
+    return 'WAREHOUSE_DETAILS_SHOWCASE_ADMINISTRATIVE_UNIT';
+  }
+
+  String get warehouseName {
+    return 'WAREHOUSE_DETAILS_SHOWCASE_WAREHOUSE_NAME';
+  }
+}
+
+class StockDetailsReceiptShowcase {
+  const StockDetailsReceiptShowcase();
+
+  String get receivedFrom {
+    return 'STOCK_DETAILS_RECEIPT_SHOWCASE_RECEIVED_FROM';
+  }
+
+  String get numberOfBednetsReceived {
+    return 'STOCK_DETAILS_RECEIPT_SHOWCASE_NUMBER_OF_BEDNETS_RECEIVED';
+  }
+
+  String get packingSlipId {
+    return 'STOCK_DETAILS_RECEIPT_SHOWCASE_PACKING_SLIP_ID';
+  }
+
+  String get numberOfNetsIndicatedOnPackingSlip {
+    return 'STOCK_DETAILS_RECEIPT_SHOWCASE_NUMBER_OF_NETS_INDICATED_ON_PACKING_SLIP';
+  }
+
+  String get typeOfTransport {
+    return 'STOCK_DETAILS_RECEIPT_SHOWCASE_TYPE_OF_TRANSPORT';
+  }
+
+  String get vehicleNumber {
+    return 'STOCK_DETAILS_RECEIPT_SHOWCASE_VEHICLE_NUMBER';
+  }
+
+  String get driverName {
+    return 'STOCK_DETAILS_RECEIPT_SHOWCASE_DRIVER_NAME';
+  }
+
+  String get comments {
+    return 'STOCK_DETAILS_RECEIPT_SHOWCASE_COMMENTS';
+  }
+}
+
+class StockDetailsIssuedShowcase {
+  const StockDetailsIssuedShowcase();
+
+  String get issuedTo {
+    return 'STOCK_DETAILS_ISSUED_SHOWCASE_ISSUED_TO';
+  }
+
+  String get numberOfBednetsIssued {
+    return 'STOCK_DETAILS_ISSUED_SHOWCASE_NUMBER_OF_BEDNETS_ISSUED';
+  }
+
+  String get packingSlipId {
+    return 'STOCK_DETAILS_ISSUED_SHOWCASE_PACKING_SLIP_ID';
+  }
+
+  String get numberOfNetsIndicatedOnPackingSlip {
+    return 'STOCK_DETAILS_ISSUED_SHOWCASE_NUMBER_OF_NETS_INDICATED_ON_PACKING_SLIP';
+  }
+
+  String get typeOfTransport {
+    return 'STOCK_DETAILS_ISSUED_SHOWCASE_TYPE_OF_TRANSPORT';
+  }
+
+  String get vehicleNumber {
+    return 'STOCK_DETAILS_ISSUED_SHOWCASE_VEHICLE_NUMBER';
+  }
+
+  String get driverName {
+    return 'STOCK_DETAILS_ISSUED_SHOWCASE_DRIVER_NAME';
+  }
+
+  String get comments {
+    return 'STOCK_DETAILS_ISSUED_SHOWCASE_COMMENTS';
+  }
+
+  String get facilitySearchHeaderLabel => 'FACILITY_SEARCH_HEADER_LABEL';
+
+  String get coreCommonDownload => 'CORE_COMMON_DOWNLOAD';
+
+  String get coreCommonDownloadFailed => 'CORE_COMMON_DOWNLOAD_FAILED';
+}
+
+class AdverseEvents {
+  const AdverseEvents();
+
+  String get adverseEventsLabel => 'ADVERSE_EVENTS_LABEL';
+
+  String get sideEffectsLabel => 'SIDE_EFFECTS_LABEL';
+
+  String get selectSymptomsLabel => 'SELECT_SYMPTOMS_LABEL';
+
+  String get resourceHeaderLabel => 'RESOURCE_HEADER_LABEL';
+
+  String get resourceCountHeaderLabel => 'RESOURCE_COUNT_HEADER_LABEL';
+
+  String get resourcesAdministeredLabel => 'RESOURCES_ADMINISTERED_LABEL';
+
+  String get didYouReAdministerLabel => 'DID_YOU_RE_ADMINISTER';
+
+  String get noOfTimesReAdministered => 'NO_OF_TIMES_RE_ADMINISTERED';
+}
+
+class Login {
+  const Login();
+
+  String get labelText => 'LOGIN_LABEL_TEXT';
+
+  String get userIdPlaceholder => 'USER_ID_PLACEHOLDER';
+
+  String get passwordPlaceholder => 'PASSWORD_PLACEHOLDER';
+  String get noInternetError => 'ERR_NOT_CONNECTED_TO_INTERNET';
+
+  String get actionLabel => 'LOGIN_ACTION_LABEL';
+
+  String get unableToLoginText => 'UNABLE_TO_LOGIN';
+
+  String get qrLogin => 'QR_LOGIN';
+
+  String get switchMobileDialogTitle => 'SWITCH_MOBILE_DIALOG_TITLE';
+
+  String get switchMobileDialogContent => 'SWITCH_MOBILE_DIALOG_CONTENT';
+
+  String get switchMobileDialogContine => 'SWITCH_MOBILE_DIALOG_CONTINUE';
+
+  String get switchMobileDialogBack => 'SWITCH_MOBILE_DIALOG_BACK';
+
+  String get switchReasonRequiredError => 'SWITCH_REASON_REQUIRED_ERROR';
+
+  String get switchReason => 'SWITCH_REASON_LABEL';
+
+  String get switchReasonHeader => 'SWITCH_REASON_HEADER_LABEL';
+
+  String get switchReasonContinue => 'SWITCH_REASON_CONTINUE';
+}
+
+class SelectSurveyFormShowcase {
+  const SelectSurveyFormShowcase();
+
+  String get selectSurveyForm {
+    return 'SELECT_CHECKLIST_SHOWCASE_SELECT_CHECKLIST';
+  }
+}
+
+class SurveyFormDataShowcase {
+  const SurveyFormDataShowcase();
+
+  String get date {
+    return 'CHECKLIST_DATA_SHOWCASE_DATE';
+  }
+
+  String get administrativeUnit {
+    return 'CHECKLIST_DATA_SHOWCASE_ADMINISTRATIVE_UNIT';
+  }
+}
+
+class SurveyFormListShowcase {
+  const SurveyFormListShowcase();
+
+  String get open {
+    return 'CHECKLIST_LIST_SHOWCASE_OPEN';
+  }
+}
+
+class ComplaintTypeShowcase {
+  const ComplaintTypeShowcase();
+
+  String get complaintType {
+    return 'COMPLAINT_TYPE_SHOWCASE_COMPLAINT_TYPE';
+  }
+
+  String get complaintTypeNext {
+    return 'COMPLAINT_TYPE_SHOWCASE_COMPLAINT_TYPE_NEXT';
+  }
+}
+
+class ComplaintsDetailsShowcase {
+  const ComplaintsDetailsShowcase();
+
+  String get complaintDate {
+    return 'COMPLAINT_DETAILS_SHOWCASE_DATE';
+  }
+
+  String get complaintOrganizationUnit {
+    return 'COMPLAINT_DETAILS_SHOWCASE_ORGANIZATION_UNIT';
+  }
+
+  String get complaintSelfOrOther {
+    return 'COMPLAINT_DETAILS_SHOWCASE_SELF_OR_OTHER';
+  }
+
+  String get complaintName {
+    return 'COMPLAINT_DETAILS_SHOWCASE_NAME';
+  }
+
+  String get complaintContact {
+    return 'COMPLAINT_DETAILS_SHOWCASE_CONTACT';
+  }
+
+  String get complaintSupervisorName {
+    return 'COMPLAINT_DETAILS_SHOWCASE_SUPERVISOR_NAME';
+  }
+
+  String get complaintSupervisorContact {
+    return 'COMPLAINT_DETAILS_SHOWCASE_SUPERVISOR_CONTACT';
+  }
+
+  String get complaintDescription {
+    return 'COMPLAINT_DETAILS_SHOWCASE_DESCRIPTION';
+  }
+
+  String get complaintSubmit {
+    return 'COMPLAINT_DETAILS_SHOWCASE_SUBMIT';
+  }
+}
+
+class ComplaintsDetailsViewShowcase {
+  const ComplaintsDetailsViewShowcase();
+
+  String get complaintNumber {
+    return 'COMPLAINT_DETAILS_VIEW_SHOWCASE_NUMBER';
+  }
+
+  String get complaintType {
+    return 'COMPLAINT_DETAILS_VIEW_SHOWCASE_TYPE';
+  }
+
+  String get complaintDate {
+    return 'COMPLAINT_DETAILS_VIEW_SHOWCASE_DATE';
+  }
+
+  String get complaintName {
+    return 'COMPLAINT_DETAILS_VIEW_SHOWCASE_NAME';
+  }
+
+  String get complaintArea {
+    return 'COMPLAINT_DETAILS_VIEW_SHOWCASE_AREA';
+  }
+
+  String get complaintContact {
+    return 'COMPLAINT_DETAILS_VIEW_CONTACT';
+  }
+
+  String get complaintStatus {
+    return 'COMPLAINT_DETAILS_VIEW_SHOWCASE_STATUS';
+  }
+
+  String get complaintDescription {
+    return 'COMPLAINT_DETAILS_VIEW_SHOWCASE_DESCRIPTION';
+  }
+
+  String get complaintClose {
+    return 'COMPLAINT_DETAILS_VIEW_SHOWCASE_CLOSE';
+  }
+}
+
+class ComplaintsInboxShowcase {
+  const ComplaintsInboxShowcase();
+
+  String get complaintSearch {
+    return 'COMPLAINT_INBOX_SHOWCASE_SEARCH';
+  }
+
+  String get complaintFilter {
+    return 'COMPLAINT_INBOX_SHOWCASE_FILTER';
+  }
+
+  String get complaintSort {
+    return 'COMPLAINT_INBOX_SHOWCASE_SORT';
+  }
+
+  String get complaintNumber {
+    return 'COMPLAINT_INBOX_SHOWCASE_NUMBER';
+  }
+
+  String get complaintType {
+    return 'COMPLAINT_INBOX_SHOWCASE_TYPE';
+  }
+
+  String get complaintDate {
+    return 'COMPLAINT_INBOX_SHOWCASE_DATE';
+  }
+
+  String get complaintArea {
+    return 'COMPLAINT_INBOX_SHOWCASE_AREA';
+  }
+
+  String get complaintStatus {
+    return 'COMPLAINT_INBOX_SHOWCASE_STATUS';
+  }
+
+  String get complaintOpen {
+    return 'COMPLAINT_INBOX_SHOWCASE_OPEN';
+  }
+
+  String get complaintCreate {
+    return 'COMPLAINT_INBOX_SHOWCASE_CREATE';
+  }
+}
+
+class ForgotPassword {
+  const ForgotPassword();
+
+  String get labelText => 'FORGOT_PASSWORD_LABEL_TEXT';
+
+  String get contentText => 'FORGOT_PASSWORD_CONTENT_TEXT';
+
+  String get primaryActionLabel => 'PRIMARY_ACTION_LABEL';
+
+  String get actionLabel => 'FORGOT_PASSWORD_ACTION_LABEL';
+}
+
+class Home {
+  const Home();
+
+  String get beneficiaryLabel => 'HOME_BENEFICIARY_LABEL';
+
+  String get manageStockLabel => 'HOME_MANAGE_STOCK_LABEL';
+
+  String get stockReconciliationLabel => 'HOME_STOCK_RECONCILIATION_LABEL';
+
+  String get viewReportsLabel => 'HOME_VIEW_REPORTS_LABEL';
+
+  String get syncDataLabel => 'HOME_SYNC_DATA_LABEL';
+
+  String get stockSyncDataLabel => 'HOME_STOCK_SYNC_DATA_LABEL';
+
+  String get callbackLabel => 'HOME_CALL_BACK_LABEL';
+
+  String get fileComplaint => 'HOME_FILE_COMPLAINT';
+
+  String get progressIndicatorTitle => 'PROGRESS_INDICATOR_TITLE';
+
+  String get progressIndicatorHelp => 'PROGRESS_INDICATOR_HELP';
+
+  String get progressIndicatorPrefixLabel => 'PROGRESS_INDICATOR_PREFIX_LABEL';
+
+  String get dataSyncInfoLabel => 'DATA_SYNC_INFO_LABEL';
+
+  String get dataSyncInfoContent => 'DATA_SYNC_INFO_CONTENT';
+
+  String get mySurveyForm => 'MY_CHECK_LIST_LABEL';
+
+  String get warehouseManagerCheckList => 'WAREHOUSE_MANAGER_CHECK_LIST_LABEL';
+
+  String get deleteAllLabel => 'HOME_DELETE_ALL_LABEL';
+
+  String get db => 'HOME_DB_LABEL';
+
+  String get dataShare => 'HOME_DATA_SHARE_LABEL';
+
+  String get dashboard => 'HOME_DASHBOARD_LABEL';
+
+  String get beneficiaryIdLabel => 'HOME_BENEFICIARY_ID_LABEL';
+
+  String get beneficiaryReferralLabel => 'HOME_BENEFICIARY_REFERRAL_LABEL';
+
+  String get manageAttendanceLabel => 'HOME_MANAGE_ATTENDANCE_LABEL';
+
+  String get transitPostLabel => 'HOME_TRANSIT_POST_LABEL';
+
+  String get closedHouseHoldLabel => 'HOME_CLOSE_HOUSEHOLD_LABEL';
+
+  String get clfLabel => "HOME_COMMUNAL_LIVING_FACILITIES_LABEL";
+
+  String get stockBalanceLabel => 'HOME_STOCK_BALANCE_LABEL';
+
+  String get faceRegistrationLabel => 'HOME_FACE_REGISTRATION_LABEL';
+
+  String get coreCommonNoInternet => 'CORE_COMMON_NO_INTERNET';
+
+  String get coreCommonSkipContinue => 'CORE_COMMON_SKIP_CONTINUE';
+}
+
+class BeneficiaryID {
+  const BeneficiaryID();
+
+  String get downloadedon => 'DOWNLOADED_ON';
+
+  String get beneficiaryIdsLabel => 'BENEFICIARY_IDS_LABEL';
+
+  String get downloadBeneficiaryIds => 'DOWNLOAD_BENEFICIARY_IDS';
+
+  String get noOfBeneficiaryIdsLeft => 'NO_OF_BENEFICIARY_IDS_LEFT';
+
+  String get availableBeneficiaryIdsText => 'AVAILABLE_BENEFICIARY_IDS_TEXT';
+
+  String get lowBeneficiaryIdsLabel => 'LOW_BENEFICIARY_IDS_LABEL';
+
+  String get lowBeneficiaryIdsText => 'LOW_BENEFICIARY_IDS_TEXT';
+
+  String get lowBeneficiaryIdsAlertText => 'LOW_BENEFICIARY_IDS_ALERT_TEXT';
+
+  String get noBeneficiaryIdsLabel => 'NO_BENEFICIARY_IDS_LABEL';
+
+  String get noBeneficiaryIdsText => 'NO_BENEFICIARY_IDS_TEXT';
+
+  String get noInternetBeneficiaryIdsText => 'NO_INTERNET_BENEFICIARY_IDS_TEXT';
+
+  String get failedBeneficiaryIds => 'FAILED_BENEFICIARY_IDS';
+
+  String get beneficiaryIdsLimitError => 'BENEFICIARY_IDS_LIMIT_ERROR';
+
+  String get beneficiaryIdsReFetch => 'BENEFICIARY_IDS_RE_FETCH';
+
+  String get totalBeneficiaryIds => 'TOTAL_BENEFICIARY_IDS';
+}
+
+class DataShare {
+  const DataShare();
+
+  String get sendAction => 'SEND_ACTION';
+
+  String get dataUnSyncedDesc => 'DATA_UN_SYNCED_DESCRIPTION';
+
+  String get sendActionDescription => 'SEND_ACTION_DESCRIPTION';
+
+  String get receiveAction => 'RECEIVE_ACTION';
+
+  String get receiveActionDescription => 'RECEIVE_ACTION_DESCRIPTION';
+
+  String get selectRecipients => 'SELECT_RECIPIENTS';
+
+  String get noRecipientsSelected => 'NO_RECIPIENTS_SELECTED';
+
+  String get noDevicesConnected => 'NO_DEVICES_CONNECTED';
+
+  String get sendActionMessage => 'SEND_ACTION_MESSAGE';
+
+  String get sendingActionMessage => 'SENDING_ACTION_MESSAGE';
+
+  String get dataTransferCompleted => 'DATA_TRANSFER_COMPLETED';
+
+  String get receiveActionMessage => 'RECEIVE_ACTION_MESSAGE';
+
+  String get receivingActionMessage => 'RECEIVING_ACTION_MESSAGE';
+
+  String get receivedSuccessMessage => 'RECEIVED_SUCCESS_MESSAGE';
+
+  String get receiverDialogTitle => 'RECEIVER_DIALOG_TITLE';
+
+  String get receiverDialogDescription => 'RECEIVER_DIALOG_DESCRIPTION';
+
+  String get senderDialogTitle => 'SENDER_DIALOG_TITLE';
+
+  String get senderDialogDescription => 'SENDER_DIALOG_DESCRIPTION';
+
+  String get dataSharingLabel => 'DATA_SHARING_LABEL';
+
+  String get projectMisMatchError => 'PROJECT_MISMATCH_ERROR';
+
+  String get invalidFileError => 'INVALID_FILE_FORMAT_ERROR';
+
+  String get fileNotFoundError => 'FILE_NOT_FOUND_ERROR';
+
+  String get failedToTransfer => 'FAILED_TO_TRANSFER';
+
+  String get failedToTransferDesc => 'FAILED_TO_TRANSFER_DESCRIPTION';
+
+  String get dateReceivedForBoundaries => 'DATA_RECEIVED_FOR_BOUNDARIES';
+
+  String get noBoundariesMatchedTitle => 'NO_BOUNDARIES_MATCHED_ERROR_TITLE';
+
+  String get noBoundariesMatchedDesc =>
+      'NO_BOUNDARIES_MATCHED_ERROR_DESCRIPTION';
+
+  String get failedToTransferDescription => 'FAILED_TO_TRANSFER_DESCRIPTION';
+
+  String get failedToReceive => 'FAILED_TO_RECEIVE';
+
+  String get failedToReceiveDescription => 'FAILED_TO_RECEIVE_DESCRIPTION';
+}
+
+class AcknowledgementSuccess {
+  const AcknowledgementSuccess();
+
+  String get actionLabelText => 'ACKNOWLEDGEMENT_SUCCESS_ACTION_LABEL_TEXT';
+
+  String get acknowledgementDescriptionText =>
+      'ACKNOWLEDGEMENT_SUCCESS_DESCRIPTION_TEXT';
+
+  String get acknowledgementLabelText => 'ACKNOWLEDGEMENT_SUCCESS_LABEL_TEXT';
+
+  String get goToHome => 'GO_TO_HOME_SCREEN';
+
+  String get downloadmoredata => 'DOWNLOAD_MORE_DATA';
+
+  String get dataDownloadedSuccessLabel => 'DATA_DOWNLOADED_SUCCESS_LABEL';
+}
+
+class ProjectSelection {
+  const ProjectSelection();
+
+  String get projectDetailsLabelText => 'PROJECT_DETAILS_LABEL';
+
+  String get syncInProgressTitleText => 'SYNC_IN_PROGRESS';
+
+  String get syncCompleteTitleText => 'SYNC_COMPLETE';
+
+  String get syncCompleteButtonText => 'CLOSE';
+
+  String get syncFailedTitleText => 'SYNC_FAILED';
+
+  String get retryButtonText => 'RETRY';
+
+  String get dismissButtonText => 'DISMISS';
+
+  String get noProjectsAssigned => 'NO_PROJECTS_ASSIGNED';
+
+  String get contactSysAdmin => 'CONTACT_SYS_ADMIN';
+
+  String get onProjectMapped => 'NO_PROJECT_MAPPED';
+
+  String get fetchBoundaryFailed => 'FETCH_BOUNDARY_FAILED';
+}
+
+class Complaints {
+  const Complaints();
+
+  String get complaintsTypeHeading => 'COMPLAINTS_TYPE_HEADING';
+
+  String get complaintsTypeLabel => 'COMPLAINTS_TYPE_LABEL';
+
+  String get actionLabel => 'HOUSEHOLD_LOCATION_ACTION_LABEL';
+
+  String get complaintsLocationLabel => 'COMPLAINTS_LOCATION_LABEL';
+
+  String get complaintsDetailsLabel => 'COMPLAINTS_DETAILS_LABEL';
+
+  String get dateOfComplaint => 'COMPLAINTS_DATE';
+
+  String get complainantTypeQuestion => 'COMPLAINTS_COMPLAINANT_TYPE_QUESTION';
+
+  String get complainantName => 'COMPLAINTS_COMPLAINANT_NAME';
+
+  String get complainantContactNumber =>
+      'COMPLAINTS_COMPLAINANT_CONTACT_NUMBER';
+
+  String get supervisorName => 'COMPLAINTS_SUPERVISOR_NAME';
+
+  String get supervisorContactNumber => 'COMPLAINTS_SUPERVISOR_CONTACT_NUMBER';
+
+  String get complaintDescription => 'COMPLAINTS_DESCRIPTION';
+
+  String get dialogTitle => 'COMPLAINTS_DIALOG_TITLE';
+
+  String get dialogContent => 'COMPLAINTS_DIALOG_MESSAGE';
+
+  String get fileComplaintAction => 'COMPLAINTS_FILE_COMPLAINT_ACTION';
+
+  String get inboxHeading => 'COMPLAINTS_INBOX_HEADING';
+
+  String get searchCTA => 'COMPLAINTS_INBOX_SEARCH_CTA';
+
+  String get filterCTA => 'COMPLAINTS_INBOX_FILTER_CTA';
+
+  String get sortCTA => 'COMPLAINTS_INBOX_SORT_CTA';
+
+  String get complaintInboxFilterHeading => 'COMPLAINTS_INBOX_FILTER_HEADING';
+
+  String get complaintsFilterClearAll => 'COMPLAINTS_FILTER_CLEAR_ALL';
+
+  String get complaintInboxSearchHeading => 'COMPLAINTS_INBOX_SEARCH_HEADING';
+
+  String get complaintInboxSortHeading => 'COMPLAINTS_INBOX_SORT_HEADING';
+
+  String get complaintsSortDateAsc => 'COMPLAINT_SORT_DATE_ASC';
+
+  String get complaintsSortDateDesc => 'COMPLAINT_SORT_DATE_DESC';
+
+  String get assignedToAll => 'COMPLAINTS_ASSIGNED_TO_ALL';
+
+  String get assignedToSelf => 'COMPLAINTS_ASSIGNED_TO_SELF';
+
+  String get noComplaintsExist => 'COMPLAINTS_NO_COMPLAINTS_EXIST';
+
+  String get validationRequiredError => 'COMPLAINTS_VALIDATION_REQUIRED_ERROR';
+
+  String get inboxDateLabel => 'COMPLAINTS_INBOX_DATE_LABEL';
+
+  String get inboxNumberLabel => 'COMPLAINTS_INBOX_NUMBER_LABEL';
+
+  String get inboxTypeLabel => 'COMPLAINTS_INBOX_TYPE_LABEL';
+
+  String get inboxAreaLabel => 'COMPLAINTS_INBOX_AREA_LABEL';
+
+  String get inboxStatusLabel => 'COMPLAINTS_INBOX_STATUS_LABEL';
+
+  String get inboxNotGeneratedLabel => 'COMPLAINTS_INBOX_NOT_GENERATED_LABEL';
+
+  String get inboxSyncRequiredLabel => 'COMPLAINTS_INBOX_SYNC_REQUIRED_LABEL';
+
+  String get raisedForMyself => 'COMPLAINTS_RAISED_FOR_MYSELF';
+
+  String get validationMinLengthError =>
+      'COMPLAINTS_VALIDATION_MINLENGTH_ERROR';
+
+  String get raisedForAnotherUser => 'COMPLAINTS_RAISED_FOR_ANOTHER_USER';
+
+  String get locality => 'COMPLAINTS_LOCALITY';
+
+  String get backToInbox => 'COMPLAINTS_BACK_TO_INBOX';
+
+  String get acknowledgementAction => 'COMPLAINTS_ACKNOWLEDGEMENT_ACTION';
+
+  String get acknowledgementDescription =>
+      'COMPLAINTS_ACKNOWLEDGEMENT_DESCRIPTION';
+
+  String get acknowledgementLabel => 'COMPLAINTS_ACKNOWLEDGEMENT_LABEL';
+
+  String get acknowledgementSubLabelMain =>
+      'COMPLAINTS_ACKNOWLEDGEMENT_SUB_LABEL_MAIN';
+
+  String get acknowledgementSubLabelSub =>
+      'COMPLAINTS_ACKNOWLEDGEMENT_SUB_LABEL_SUB';
+
+  String get complaintsError => 'COMPLAINTS_VALIDATION_REQUIRED_ERROR';
+
+  String get validationRadioRequiredError =>
+      'COMPLAINTS_VALIDATION_RADIO_REQUIRED_ERROR';
+}
+
+class SyncDialog {
+  const SyncDialog();
+
+  String get syncFailedTitle => 'SYNC_DIALOG_SYNC_FAILED_TITLE';
+
+  String get downSyncFailedTitle => 'SYNC_DIALOG_DOWN_SYNC_FAILED_TITLE';
+
+  String get upSyncFailedTitle => 'SYNC_DIALOG_UP_SYNC_FAILED_TITLE';
+
+  String get syncInProgressTitle => 'SYNC_DIALOG_SYNC_IN_PROGRESS_TITLE';
+
+  String get dataSyncedTitle => 'SYNC_DIALOG_DATA_SYNCED_TITLE';
+
+  String get noDataToSyncTitle => 'SYNC_DIALOG_NO_DATA_TO_SYNC_TITLE';
+
+  String get closeButtonLabel => 'SYNC_DIALOG_CLOSE_BUTTON_LABEL';
+
+  String get retryButtonLabel => 'SYNC_DIALOG_RETRY_BUTTON_LABEL';
+
+  String get pendingSyncLabel => 'PENDING_SYNC_LABEL';
+
+  String get pendingSyncContent => 'PENDING_SYNC_CONTENT';
+
+  String get noInternetConnection => 'SYNC_DIALOG_NO_INTERNET_CONNECTION';
+
+  String get connectionTimedOut => 'SYNC_DIALOG_CONNECTION_TIMED_OUT';
+
+  String get serverError => 'SYNC_DIALOG_SERVER_ERROR';
+
+  String get networkError => 'SYNC_DIALOG_NETWORK_ERROR';
+}
+
+class StockReconciliationShowcase {
+  const StockReconciliationShowcase();
+
+  String get warehouseName {
+    return 'STOCK_RECONCILIATION_SHOWCASE_WAREHOUSE_NAME';
+  }
+
+  String get dateOfReconciliation {
+    return 'STOCK_RECONCILIATION_SHOWCASE_DATE_OF_RECONCILIATION';
+  }
+
+  String get stockReceived {
+    return 'STOCK_RECONCILIATION_SHOWCASE_STOCK_RECEIVED';
+  }
+
+  String get stockIssued {
+    return 'STOCK_RECONCILIATION_SHOWCASE_STOCK_ISSUED';
+  }
+
+  String get stockReturned {
+    return 'STOCK_RECONCILIATION_SHOWCASE_STOCK_RETURNED';
+  }
+
+  String get stockOnHand {
+    return 'STOCK_RECONCILIATION_SHOWCASE_STOCK_ON_HAND';
+  }
+
+  String get manualStockCount {
+    return 'STOCK_RECONCILIATION_SHOWCASE_MANUAL_STOCK_COUNT';
+  }
+
+  String get comments {
+    return 'STOCK_RECONCILIATION_SHOWCASE_COMMENTS';
+  }
+}
+
+class StockDetailsReturnedShowcase {
+  const StockDetailsReturnedShowcase();
+
+  String get returnedFrom {
+    return 'STOCK_DETAILS_RETURNED_SHOWCASE_RETURNED_FROM';
+  }
+
+  String get numberOfBednetsReturned {
+    return 'STOCK_DETAILS_RETURNED_SHOWCASE_NUMBER_OF_BEDNETS_RETURNED';
+  }
+
+  String get packingSlipId {
+    return 'STOCK_DETAILS_RETURNED_SHOWCASE_PACKING_SLIP_ID';
+  }
+
+  String get numberOfNetsIndicatedOnPackingSlip {
+    return 'STOCK_DETAILS_RETURNED_SHOWCASE_NUMBER_OF_NETS_INDICATED_ON_PACKING_SLIP';
+  }
+
+  String get typeOfTransport {
+    return 'STOCK_DETAILS_RETURNED_SHOWCASE_TYPE_OF_TRANSPORT';
+  }
+
+  String get vehicleNumber {
+    return 'STOCK_DETAILS_RETURNED_SHOWCASE_VEHICLE_NUMBER';
+  }
+
+  String get driverName {
+    return 'STOCK_DETAILS_RETURNED_SHOWCASE_DRIVER_NAME';
+  }
+
+  String get comments {
+    return 'STOCK_DETAILS_RETURNED_SHOWCASE_COMMENT';
+  }
+}
+
+class HouseholdLocationShowcase {
+  const HouseholdLocationShowcase();
+
+  String get administrativeArea {
+    return 'HOUSEHOLD_LOCATION_SHOWCASE_ADMINISTRATIVE_AREA';
+  }
+
+  String get landmark {
+    return 'HOUSEHOLD_LOCATION_SHOWCASE_LANDMARK';
+  }
+
+  String get address {
+    return 'HOUSEHOLD_LOCATION_SHOWCASE_ADDRESS';
+  }
+
+  String get postalCode {
+    return 'HOUSEHOLD_LOCATION_SHOWCASE_POSTAL_CODE';
+  }
+}
+
+class HouseholdLocation {
+  const HouseholdLocation();
+
+  String get householdLocationLabelText => 'HOUSEHOLD_LOCATION_LABEL_TEXT';
+
+  String get administrationAreaFormLabel => 'ADMINISTRATION_AREA_FORM_LABEL';
+
+  String get administrationAreaRequiredValidation =>
+      'HOUSEHOLD_LOCATION_ADMINISTRATION_AREA_REQUIRED_VALIDATION';
+
+  String get householdAddressLine1LabelText =>
+      'HOUSEHOLD_ADDRESS_LINE_1_FORM_LABEL';
+
+  String get landmarkFormLabel => 'LANDMARK_FORM_LABEL';
+
+  String get householdAddressLine2LabelText =>
+      'HOUSEHOLD_ADDRESS_LINE_2_FORM_LABEL';
+
+  String get postalCodeFormLabel => 'POSTAL_CODE_FORM_LABEL';
+
+  String get actionLabel => 'HOUSEHOLD_LOCATION_ACTION_LABEL';
+}
+
+class SearchBeneficiary {
+  const SearchBeneficiary();
+
+  String get statisticsLabelText => 'BENEFICIARY_STATISTICS_LABEL_TEXT';
+
+  String get searchIndividualLabelText =>
+      'BENEFICIARY_STATISTICS_SEARCH_INDIVIDUAL_LABEL';
+
+  String get noOfHouseholdsRegistered => 'NO_OF_HOUSEHOLDS_REGISTERED';
+
+  String get noOfResourcesDelivered => 'NO_OF_RESOURCES_DELIVERED';
+
+  String get beneficiarySearchHintText => 'BENEFICIARY_SEARCH_HINT_TEXT';
+
+  String get beneficiaryIndividualSearchHintText =>
+      'BENEFICIARY_INDIVIDUAL_SEARCH_HINT_TEXT';
+
+  String get beneficiaryInfoDescription => 'BENEFICIARY_INFO_DESCRIPTION';
+
+  String get beneficiaryInfoTitle => 'BENEFICIARY_INFO_TITLE';
+
+  String get beneficiaryAddActionLabel => 'BENEFICIARY_ADD_ACTION_LABEL';
+
+  String get iconLabel => 'ICON_LABEL';
+
+  String get yearsAbbr => 'YEARS_ABBR';
+
+  String get monthsAbbr => 'MONTHS_ABBR';
+
+  String get proximityLabel => 'PROXIMITY_LABEL';
+}
+
+class IndividualDetails {
+  const IndividualDetails();
+
+  String get individualsDetailsLabelText => 'INDIVIDUAL_LABEL_TEXT';
+
+  String get nameLabelText => 'INDIVIDUAL_NAME_LABEL_TEXT';
+
+  String get checkboxLabelText => 'HEAD_OF_HOUSEHOLD_LABEL_TEXT';
+
+  String get idTypeLabelText => 'ID_TYPE_LABEL_TEXT';
+
+  String get idNumberLabelText => 'ID_NUMBER_LABEL_TEXT';
+
+  String get idNumberSuggestionText => 'ID_NUMBER_SUGGESTION_TEXT';
+
+  String get dobLabelText => 'DOB_LABEL_TEXT';
+
+  String get ageLabelText => 'AGE_LABEL_TEXT';
+
+  String get separatorLabelText => 'SEPARATOR_LABEL_TEXT';
+
+  String get genderLabelText => 'GENDER_LABEL_TEXT';
+
+  String get dobErrorText => 'DOB_ERROR_MESSAGE';
+
+  String get mobileNumberLabelText => 'MOBILE_NUMBER_LABEL_TEXT';
+
+  String get heightLabelText => 'HEIGHT_LABEL_TEXT';
+
+  String get submitButtonLabelText => 'INDIVIDUAL_DETAILS_SUBMIT';
+
+  String get mobileNumberInvalidFormatValidationMessage =>
+      'INDIVIDUAL_DETAILS_INVALID_MOBILE_NUMBER';
+
+  String get yearsHintText => 'YEARS_HINT_TEXT';
+
+  String get monthsHintText => 'MONTHS_HINT_TEXT';
+
+  String get yearsErrorText => 'ERR_YEARS';
+
+  String get monthsErrorText => 'ERR_MONTHS';
+
+  String get yearsAndMonthsErrorText => 'ERR_YEARS_AND_MONTHS';
+
+  String get linkVoucherToIndividual => 'LINK_VOUCHER_TO_INDIVIDUAL';
+}
+
+class BeneficiaryDetails {
+  const BeneficiaryDetails();
+
+  String get beneficiarysDetailsLabelText => 'BENEFICIARY_DETAILS_LABEL_TEXT';
+
+  String get beneficiarysDetailsEditIconLabelText =>
+      'BENEFICIARY_DETAILS_EDIT_ICON_LABEL_TEXT';
+
+  String get beneficiarysDetailsEditIconLabel =>
+      'BENEFICIARY_DETAILS_EDIT_ICON_LABEL';
+
+  String get beneficiarysDetailsDeleteIconLabel =>
+      'BENEFICIARY_DETAILS_DELETE_ICON_LABEL';
+
+  String get resourcesTobeDelivered => 'RESOURCES_TO_BE_DELIVERED';
+
+  String get resourcesTobeProvided => 'RESOURCES_TO_BE_PROVIDED';
+
+  String get beneficiaryAge => 'BENEFICIARY_AGE';
+
+  String get ctaProceed => 'PROCEED';
+
+  String get beneficiaryDoseNo => 'BENEFICIARY_DETAILS_DOSE_NO';
+
+  String get beneficiaryDose => 'BENEFICIARY_DETAILS_DOSE';
+
+  String get beneficiaryStatus => 'BENEFICIARY_DETAILS_STATUS';
+
+  String get beneficiaryResources => 'BENEFICIARY_DETAILS_RESOURCES';
+
+  String get beneficiaryQuantity => 'BENEFICIARY_DETAILS_QUANTITY';
+
+  String get beneficiaryCompletedOn => 'BENEFICIARY_DETAILS_COMPLETED_ON';
+
+  String get beneficiaryDeliveryStrategy =>
+      'BENEFICIARY_DETAILS_DELIVERY_STRATEGY';
+
+  String get beneficiaryCycle => 'BENEFICIARY_DETAILS_CYCLE';
+
+  String get currentCycleLabel => 'BENEFICIARY_DETAILS_CURRENT_CYCLE_LABEL';
+
+  String get fromCurrentLocation => 'FROM_CURRENT_LOCATION';
+
+  String get unableToScan => 'UNABLE_TO_SCAN';
+
+  String get scanValidResource => 'SCAN_VALID_RESOURCE';
+
+  String get scannedResourceCountMisMatch => 'SCANNED_RESOURCE_COUNT_MISMATCH';
+
+  String get resourceAlreadyScanned => 'RESOURCE_ALREADY_SCANNED';
+
+  String get scannerLabel => 'SCANNER_LABEL';
+
+  String get noOfResourceScanned => 'NO_OF_RESOURCE_SCANNED';
+
+  String get resourcesScanned => 'RESOURCES_SCANNED';
+
+  String get saveScannedResource => 'SAVE_SCANNED_RESOURCE';
+
+  String get flashOn => 'FLASH_ON';
+
+  String get flashOff => 'FLASH_OFF';
+
+  String get scannerDialogTitle => 'SCANNER_DIALOG_TITLE';
+
+  String get scannerDialogContent => 'SCANNER_DIALOG_CONTENT';
+
+  String get scannerDialogPrimaryAction => 'SCANNER_DIALOG_PRIMARY_ACTION';
+
+  String get scannerDialogSecondaryAction => 'SCANNER_DIALOG_SECONDARY_ACTION';
+
+  String get beneficiaryHeader => 'BENEFICIARY_HEADER';
+
+  String get deliveryHeader => 'DELIVERY_TABLE_HEADER';
+
+  String get proceedWithoutDownloading => 'PROCEED_WITHOUT_DOWNLOADING';
+
+  String get unableToCheckDataInServer => 'FAILED_TO_CHECK_DATA_IN_SERVER';
+
+  String get dataFound => 'DATA_FOUND';
+
+  String get noDataFound => 'NO_DATA_FOUND';
+
+  String get dataFoundContent => 'DATA_FOUND_CONTENT';
+
+  String get noDataFoundContent => 'NO_DATA_FOUND_CONTENT';
+
+  String get dataDownloadInProgress => 'DATA_DOWNLOAD_IN_PROGRESS';
+
+  String get insufficientStorage => 'INSUFFICIENT_STORAGE_WARNING';
+
+  String get downloadreport => 'DOWNLOAD_REPORT';
+
+  String get boundary => 'BOUNDARY';
+
+  String get status => 'STATUS';
+
+  String get downloadedon => 'DOWNLOADED_ON';
+
+  String get recordsdownload => 'RECORDS_DOWNLOAD';
+
+  String get downloadcompleted => 'DOWNLOAD_COMPLETED';
+
+  String get datadownloadreport => 'DATA_DOWNLOAD_REPORT';
+
+  String get download => 'DOWNLOAD';
+
+  String get partialdownloaded => 'PARTIAL_DOWNLOAD';
+
+  String get downloadtime => 'DOWNLOAD_TIME';
+
+  String get totalrecorddownload => 'TOTAL_RECORD_DOWNLOAD';
+
+  String get insufficientStorageContent =>
+      'INSUFFICIENT_STORAGE_WARNING_CONTENT';
+
+  String get referralDownloadCompleted => 'REFERRAL_DOWNLOAD_COMPLETED';
+
+  String get recordCycle => 'BENEFICIARY_DETAILS_RECORD_CYCLE';
+}
+
+class PrivacyPolicy {
+  const PrivacyPolicy();
+
+  String get acceptText {
+    return 'PRIVACY_POLICY_ACCEPT_TEXT';
+  }
+
+  String get declineText {
+    return 'PRIVACY_POLICY_DECLINE_TEXT';
+  }
+
+  String get privacyNoticeText => 'PRIVACY_POLICY_TEXT';
+
+  String get privacyPolicyLinkText => 'PRIVACY_POLICY_LINK_TEXT';
+
+  String get privacyPolicyValidationText => 'PRIVACY_POLICY_VALIDATION_TEXT';
+}
+
+class Dashboard {
+  const Dashboard();
+
+  String get dashboardHeaderLabel => 'DASHBOARD_HEADER';
+}
+
+class NonMobileUser {
+  const NonMobileUser();
+
+  String get nonMobileUserLabel => 'NON_MOBILE_USER_LABEL';
+
+  String get showQrCodeBtnLabel => 'NON_MOBILE_USER_QR_BTN_LABEL';
+
+  String get showQrCodeLabel => 'NON_MOBILE_USER_QR_LABEL';
+}
+
+class DatabaseError {
+  const DatabaseError();
+
+  String get databaseErrorTitle => 'DATABASE_ERROR_TITLE';
+
+  String get databaseErrorMessage => 'DATABASE_ERROR_MESSAGE';
+
+  String get closeAppButton => 'DATABASE_ERROR_CLOSE_APP';
+}

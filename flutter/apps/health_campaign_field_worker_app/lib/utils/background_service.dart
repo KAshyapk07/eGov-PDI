@@ -1,0 +1,403 @@
+import 'dart:async';
+import 'dart:io';
+import 'dart:ui';
+
+import 'package:battery_plus/battery_plus.dart';
+import 'package:collection/collection.dart';
+import 'package:digit_data_model/data_model.dart';
+import 'package:digit_location_tracker/utils/utils.dart'
+    as location_tracker_utils;
+import 'package:dio/dio.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:isar/isar.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:recase/recase.dart';
+import 'package:sync_service/data/sync_service.dart';
+import 'package:sync_service/models/bandwidth/bandwidth_model.dart';
+import 'package:sync_service/utils/utils.dart' as sync_utils;
+
+import '../data/local_store/no_sql/schema/app_configuration.dart';
+import '../data/local_store/no_sql/schema/service_registry.dart';
+import '../data/local_store/secure_store/secure_store.dart';
+import '../data/remote_client.dart';
+import '../data/repositories/remote/bandwidth_check.dart';
+import '../widgets/network_manager_provider_wrapper.dart';
+import 'environment_config.dart';
+import 'utils.dart';
+
+late LocalSqlDataStore _sql;
+late Dio _dio;
+Future<Isar> isarFuture = Constants().isar;
+
+Future<void> initializeService(dio, isar) async {
+  if (Isar.getInstance('HCM') == null) {
+    final info = await PackageInfo.fromPlatform();
+    await Constants().initialize(info.version);
+  }
+
+  final service = FlutterBackgroundService();
+  const notificationId = 888;
+  // this will be used as notification channel id
+  const notificationChannelId = 'my_foreground';
+  const AndroidNotificationChannel channel = AndroidNotificationChannel(
+    notificationChannelId, // id
+    'Background Sync', // title
+    description: 'Background sync triggered.', // description
+    importance: Importance.high, // importance must be at low or higher level
+  );
+  final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+      FlutterLocalNotificationsPlugin();
+
+  if (Platform.isAndroid) {
+    flutterLocalNotificationsPlugin
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
+        ?.requestExactAlarmsPermission();
+    flutterLocalNotificationsPlugin
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
+        ?.requestNotificationsPermission();
+    await flutterLocalNotificationsPlugin
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(channel);
+  }
+  requestDisableBatteryOptimization();
+  await service.configure(
+    androidConfiguration: AndroidConfiguration(
+        // this will be executed when app is in foreground or background in separated isolate
+        onStart: onStart,
+        autoStartOnBoot: false,
+        // auto start service
+        autoStart: false,
+        isForegroundMode: true,
+        initialNotificationContent: 'BackGround Service Started at ${DateTime.now()}',
+        initialNotificationTitle: 'Background service',
+        notificationChannelId: notificationChannelId,
+        foregroundServiceNotificationId: notificationId,
+        foregroundServiceTypes: [AndroidForegroundType.dataSync]),
+    iosConfiguration: IosConfiguration(
+      // auto start service
+      autoStart: false,
+      onForeground: onStart,
+      // this will be executed when app is in foreground in separated isolate
+
+      // you have to enable background fetch capability on xcode project
+      onBackground: onIosBackground,
+    ),
+  );
+}
+
+@pragma('vm:entry-point')
+Future<bool> onIosBackground(ServiceInstance service) async {
+  WidgetsFlutterBinding.ensureInitialized();
+  DartPluginRegistrant.ensureInitialized();
+
+  return true;
+}
+
+@pragma('vm:entry-point')
+void onStart(ServiceInstance service) async {
+  // Only available for flutter 3.0.0 and later
+  // DartPluginRegistrant.ensureInitialized();
+
+  service.on('stopService').listen((event) {
+    service.stopSelf();
+  });
+  await envConfig.initialize();
+  final info = await PackageInfo.fromPlatform();
+  if (Isar.getInstance('HCM') == null) {
+    await Constants().initialize(info.version);
+  } else {
+    // Isar already open (from isarFuture), but singletons are
+    // per-isolate so package data must still be initialised.
+    await initializeAllMappers();
+    Constants().setInitialDataOfPackages();
+  }
+
+  _dio = DioClient().dio;
+  final _isar = await isarFuture;
+
+  // Initialize encrypted database for background service
+  final encryptionKey = await LocalSecureStore.instance.getOrCreateDbEncryptionKey();
+  _sql = LocalSqlDataStore(encryptionKey: encryptionKey);
+
+  final userRequestModel = await LocalSecureStore.instance.userRequestModel;
+  final selectedProject = await LocalSecureStore.instance.selectedProject;
+
+  if (userRequestModel == null ||
+      userRequestModel.tenantId == null ||
+      selectedProject == null) {
+    service.invoke("stopService");
+    return;
+  }
+
+  location_tracker_utils.LocationTrackerSingleton()
+      .setTenantId(tenantId: userRequestModel.tenantId!);
+  location_tracker_utils.LocationTrackerSingleton().setInitialData(
+      projectId: selectedProject.id, loggedInUserUuid: userRequestModel.uuid);
+
+  // LocationTrackerService().processLocationData(
+  //     interval: 120, createdBy: userRequestModel.uuid, isar: _isar);
+
+  final appConfiguration = await _isar.appConfigurations.where().findAll();
+  final interval =
+      appConfiguration.first.backgroundServiceConfig?.serviceInterval;
+  final frequencyCount =
+      appConfiguration.first.backgroundServiceConfig?.apiConcurrency;
+
+  if (interval != null) {
+    bool isSyncing = false;
+    makePeriodicTimer(
+      Duration(seconds: interval),
+      (timer) async {
+        if (isSyncing) return; // Previous tick still running — skip
+        isSyncing = true;
+        try {
+          service.invoke('serviceRunning', {
+            "enablesManualSync": false,
+          });
+          var battery = Battery();
+          final int batteryPercent = await battery.batteryLevel;
+          if (batteryPercent <=
+              appConfiguration
+                  .first.backgroundServiceConfig!.batteryPercentCutOff!) {
+            service.invoke("stopService");
+          } else {
+            final FlutterLocalNotificationsPlugin
+                flutterLocalNotificationsPlugin =
+                FlutterLocalNotificationsPlugin();
+            final isSyncAlreadyRunning = await SyncLock.isLocked();
+            debugPrint('BG_SYNC: locked=$isSyncAlreadyRunning, frequencyCount=$frequencyCount');
+            if (frequencyCount != null && !isSyncAlreadyRunning) {
+              final serviceRegistryList =
+                  await _isar.serviceRegistrys.where().findAll();
+              debugPrint('BG_SYNC: serviceRegistryList=${serviceRegistryList.length}');
+              if (serviceRegistryList.isNotEmpty) {
+                final bandwidthService = serviceRegistryList.firstWhereOrNull(
+                  (element) => element.service == 'BANDWIDTH-CHECK',
+                );
+                debugPrint('BG_SYNC: bandwidthService=${bandwidthService?.service}');
+                if (bandwidthService != null &&
+                    bandwidthService.actions.isNotEmpty) {
+                  final bandwidthPath = bandwidthService.actions.first.path;
+
+                  List speedArray = [];
+                  for (var i = 0; i < frequencyCount; i++) {
+                    try {
+                      final double speed = await BandwidthCheckRepository(
+                        _dio,
+                        bandwidthPath: bandwidthPath,
+                      ).pingBandwidthCheck(bandWidthCheckModel: null);
+                      speedArray.add(speed);
+                    } catch (e) {
+                      debugPrint('BG_SYNC: bandwidth check failed: $e');
+                      service.invoke('serviceRunning', {
+                        "enablesManualSync": true,
+                        "syncError": "SYNC_DIALOG_NO_INTERNET_CONNECTION",
+                      });
+                      break;
+                    }
+                  }
+                  if (speedArray.isNotEmpty) {
+                    double sum = speedArray.fold(0, (p, c) => p + c);
+
+                    int configuredBatchSize = getBatchSizeToBandwidth(
+                      sum / speedArray.length,
+                      appConfiguration,
+                    );
+                    final BandwidthModel bandwidthModel = BandwidthModel.fromJson({
+                      'userId': userRequestModel?.uuid,
+                      'batchSize': configuredBatchSize,
+                    });
+                    flutterLocalNotificationsPlugin.show(
+                      888,
+                      'Auto Sync',
+                      'Speed : ${speedArray.isNotEmpty && speedArray.firstOrNull != null ? double.tryParse(speedArray.first.toString())?.toStringAsFixed(2) ?? '0' : '0'}Mb/ps - BatchSize : $configuredBatchSize',
+                      const NotificationDetails(
+                        android: AndroidNotificationDetails(
+                          "my_foreground",
+                          'AUTO SYNC',
+                          icon: 'ic_bg_service_small',
+                          ongoing: true,
+                        ),
+                      ),
+                    );
+                    // Listen to sync progress and update notification
+                    final progressSub = sync_utils.SyncServiceSingleton()
+                        .progressStream
+                        .listen((progress) {
+                      final direction = progress.operation == 'syncUp'
+                          ? '↑ Uploading'
+                          : '↓ Downloading';
+                      flutterLocalNotificationsPlugin.show(
+                        888,
+                        'Auto Sync',
+                        '$direction: ${progress.entityType}',
+                        const NotificationDetails(
+                          android: AndroidNotificationDetails(
+                            "my_foreground",
+                            'AUTO SYNC',
+                            icon: 'ic_bg_service_small',
+                            ongoing: true,
+                          ),
+                        ),
+                      );
+                    });
+
+                    final localRepos = Constants.getLocalRepositories(
+                      _sql,
+                      _isar,
+                    ).toList();
+                    final remoteRepos = Constants.getRemoteRepositories(
+                      _dio,
+                      getActionMap(serviceRegistryList),
+                    );
+
+                    // Re-check lock right before sync since bandwidth
+                    // checks may have taken significant time.
+                    final isLockedBeforeSync = await SyncLock.isLocked();
+                    debugPrint('BG_SYNC: lock status before performSync=$isLockedBeforeSync');
+                    if (isLockedBeforeSync) {
+                      debugPrint('BG_SYNC: Lock acquired by another process during bandwidth check, skipping sync');
+                      await progressSub.cancel();
+                      service.invoke('serviceRunning', {
+                        "enablesManualSync": true,
+                      });
+                      return;
+                    }
+
+                    bool isSyncCompleted = false;
+                    try {
+                      isSyncCompleted = await SyncService().performSync(
+                        localRepositories: localRepos,
+                        remoteRepositories: remoteRepos,
+                        bandwidthModel: bandwidthModel,
+                        service: service,
+                      );
+                      debugPrint('BG_SYNC: performSync completed=$isSyncCompleted');
+                      if (!isSyncCompleted) {
+                        debugPrint('BG_SYNC: performSync returned false — lock was not acquired');
+                      }
+                    } catch (e) {
+                      debugPrint('BG_SYNC: performSync failed with error: $e');
+                    }
+
+                    await progressSub.cancel();
+
+                    if (isSyncCompleted) {
+                      // Show last synced time in notification
+                      final now = DateTime.now();
+                      final timeStr =
+                          '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+                      flutterLocalNotificationsPlugin.show(
+                        888,
+                        'Auto Sync',
+                        'Last synced at $timeStr',
+                        const NotificationDetails(
+                          android: AndroidNotificationDetails(
+                            "my_foreground",
+                            'AUTO SYNC',
+                            icon: 'ic_bg_service_small',
+                            ongoing: true,
+                          ),
+                        ),
+                      );
+                    }
+                  }
+                }
+              }
+            }
+          }
+          service.invoke('serviceRunning', {
+            "enablesManualSync": true,
+          });
+        } finally {
+          isSyncing = false;
+        }
+      },
+      fireNow: true,
+    );
+  } else {
+    service.invoke("stopService");
+  }
+}
+
+getActionMap(List<ServiceRegistry> serviceRegistryList) {
+  return serviceRegistryList
+      .map((e) => e.actions.map((e) {
+            ApiOperation? operation;
+            DataModelType? type;
+
+            operation = ApiOperation.values.firstWhereOrNull((element) {
+              return e.action.camelCase == element.name;
+            });
+
+            type = DataModelType.values.firstWhereOrNull((element) {
+              return e.entityName.camelCase == element.name;
+            });
+
+            if (operation == null || type == null) return null;
+
+            return ActionPathModel(
+              operation: operation,
+              type: type,
+              path: e.path,
+            );
+          }))
+      .expand((element) => element)
+      .whereNotNull()
+      .fold(
+    <DataModelType, Map<ApiOperation, String>>{},
+    (Map<DataModelType, Map<ApiOperation, String>> o, element) {
+      if (o.containsKey(element.type)) {
+        o[element.type]?.addEntries(
+          [MapEntry(element.operation, element.path)],
+        );
+      } else {
+        o[element.type] = Map.fromEntries([
+          MapEntry(element.operation, element.path),
+        ]);
+      }
+
+      return o;
+    },
+  );
+}
+
+int getBatchSizeToBandwidth(
+  double speed,
+  List<AppConfiguration> appConfiguration, {
+  bool isDownSync = false,
+}) {
+  int batchSize = 100;
+  final bandwidthBatchSizeConfig = isDownSync
+      ? appConfiguration.first.downSyncBandwidthBatchSize
+      : appConfiguration.first.bandwidthBatchSize;
+
+  final batchResult = bandwidthBatchSizeConfig
+      ?.where(
+        (element) => speed >= element.minRange && speed <= element.maxRange,
+      )
+      .toList();
+  if (batchResult != null) {
+    if (batchResult.isNotEmpty) {
+      batchSize = int.parse(batchResult.first.batchSize.toString());
+    } else {
+      appConfiguration.first.bandwidthBatchSize!.sort(
+        (a, b) => a.maxRange.compareTo(b.maxRange),
+      );
+      if (speed >= appConfiguration.first.bandwidthBatchSize!.last.maxRange) {
+        batchSize = appConfiguration.first.bandwidthBatchSize!.last.batchSize;
+      } else if (speed <=
+          appConfiguration.first.bandwidthBatchSize!.first.maxRange) {
+        batchSize = appConfiguration.first.bandwidthBatchSize!.first.batchSize;
+      }
+    }
+  }
+
+  return batchSize;
+}

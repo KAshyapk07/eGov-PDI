@@ -1,0 +1,153 @@
+import { Row } from "@egovernments/digit-ui-react-components";
+import React, { Fragment, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+import DetailsTable from "./DetailsTable";
+import { Button, AlertCard, Card, Toggle } from "@egovernments/digit-ui-components";
+import { I18N_KEYS } from "../utils/i18nKeyConstants";
+
+const Tabs = ({ deliveryData, onTabChange }) => {
+  const { t } = useTranslation();
+
+  const activeItem = deliveryData?.find((d) => d.active === true);
+  const activeIndex = activeItem ? deliveryData.indexOf(activeItem) : 0;
+
+  const toggleOptions = deliveryData?.map((delivery, index) => ({
+    code: String(index),
+    name: `${t(I18N_KEYS.COMPONENTS.CAMPAIGN_DELIVERY)} ${index + 1}`,
+  })) || [];
+
+  return (
+    <Toggle
+      options={toggleOptions}
+      optionsKey="name"
+      selectedOption={String(activeIndex)}
+      onSelect={(code) => {
+        const idx = Number(code);
+        const delivery = deliveryData[idx];
+        if (delivery) {
+          onTabChange(delivery.deliveryIndex, idx);
+        }
+      }}
+      style={{}}
+    />
+  );
+};
+
+const CycleDataPreview = ({ data, items, index, errors, onErrorClick, cardErrors }) => {
+  const { t } = useTranslation();
+  const [deliveryData, setDeliveryData] = useState(data?.deliveries);
+  const [activeTab, setActiveTab] = useState(1);
+
+  useEffect(() => {
+    setDeliveryData(data?.deliveries);
+  }, [data?.deliveries]);
+
+  const handleTabChange = (tabIndex, index) => {
+    setDeliveryData((prev) => {
+      return prev.map((i) => {
+        if (i.deliveryIndex == tabIndex) {
+          return {
+            ...i,
+            active: true,
+          };
+        } else {
+          return {
+            ...i,
+            active: false,
+          };
+        }
+      });
+    });
+  };
+  // return null;
+  return (
+    <>
+      {cardErrors?.map((i) => (
+        <AlertCard
+          populators={{
+            name: "infocard",
+          }}
+          style={{marginBottom:"0rem"}}
+          variant="error"
+          text={t(i?.error ? i?.error : i?.message)}
+          hasAdditionalElements={true}
+          additionalElements={[<Button className={"error alert-card-error-button"} label={i?.button} title={i?.button} variation="secondary" onClick={i.onClick} />]}
+        />
+      ))}
+      {(data?.startDate || data?.endDate) && (
+        <div className="employee-data-table ">
+          {data?.startDate && (
+            <Row
+              key={t("startDate")}
+              label={`${t("Start Date")}`}
+              text={data?.startDate}
+              className="border-none"
+              rowContainerStyle={{ display: "flex" }}
+              labelStyle={{ fontWeight: "500" }}
+            />
+          )}
+          {data?.endDate && (
+            <Row
+              key={t("endDate")}
+              label={`${t("End Date")}`}
+              text={data?.endDate}
+              className="border-none"
+              rowContainerStyle={{ display: "flex" }}
+              labelStyle={{ fontWeight: "500" }}
+            />
+          )}
+        </div>
+      )}
+
+      <Tabs deliveryData={deliveryData} tabCount={deliveryData?.length} activeTab={activeTab} onTabChange={handleTabChange} />
+
+      {deliveryData?.find((i) => i?.active === true)
+        ?.deliveryRules?.map((rules, ruleIndex) => {
+          return (
+            <Card className="delivery-preview-card delivery-preview-screen" style={{marginBottom:"0rem !important"}}>
+              {rules?.attributes?.length > 0 && (
+                <DetailsTable
+                  className="campaign-attribute-table"
+                  cardHeader={{ value: `${t(I18N_KEYS.COMPONENTS.CAMPAIGN_CONDITION)} ${ruleIndex + 1}` }}
+                  columnsData={[
+                    {
+                      Header: t(I18N_KEYS.COMPONENTS.CAMPAIGN_ATTRIBUTE_LABEL),
+                      accessor: "attribute",
+                    },
+                    {
+                      Header: t(I18N_KEYS.COMPONENTS.CAMPAIGN_OPERATOR_LABEL),
+                      accessor: "operator",
+                    },
+                    {
+                      Header: t(I18N_KEYS.COMPONENTS.CAMPAIGN_VALUE_LABEL),
+                      accessor: "value",
+                    },
+                  ]}
+                  rowsData={rules?.attributes}
+                />
+              )}
+              {rules?.products?.length > 0 && (
+                <DetailsTable
+                  className="campaign-product-table"
+                  // cardHeader={{ value: "Product Details" }}
+                  columnsData={[
+                    {
+                      Header: t(I18N_KEYS.COMPONENTS.CAMPAIGN_PRODUCT_LABEL),
+                      accessor: "name",
+                    },
+                    {
+                      Header: t(I18N_KEYS.COMPONENTS.CAMPAIGN_COUNT_LABEL),
+                      accessor: "quantity",
+                    },
+                  ]}
+                  rowsData={rules?.products}
+                />
+              )}
+            </Card>
+          );
+        })}
+    </>
+  );
+};
+
+export default CycleDataPreview;

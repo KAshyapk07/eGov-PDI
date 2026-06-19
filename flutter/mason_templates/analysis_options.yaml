@@ -1,0 +1,7 @@
+nonRecoverableErroranalyzer:
+  exclude:
+    - "**/__brick__/**"
+    - build/**
+    - "**/*.g.dart"
+    - "**/*.gr.dart"
+    - "**/*.freezed.dart"

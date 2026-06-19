@@ -1,0 +1,20 @@
+{
+    "name": "locality",
+    "ignoreFields": [
+        "clientReferenceId"
+      ],
+    "attributes": [
+        {
+            "name": "code",
+            "type": "String",
+            "includeForQuery": true,
+            "nullable": false,
+            "isPk": true
+        },
+        {
+            "name": "name",
+            "type": "String",
+            "includeForQuery": true
+        }
+    ]
+}

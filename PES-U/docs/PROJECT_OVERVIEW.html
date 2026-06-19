@@ -1,0 +1,994 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Population Denominator Intelligence & Beneficiary Deduplication — Project Overview</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+  :root {
+    --primary: #1a56db;
+    --primary-light: #e8f0fe;
+    --danger: #dc2626;
+    --warning: #f59e0b;
+    --success: #16a34a;
+    --gray-50: #f9fafb;
+    --gray-100: #f3f4f6;
+    --gray-200: #e5e7eb;
+    --gray-300: #d1d5db;
+    --gray-500: #6b7280;
+    --gray-700: #374151;
+    --gray-900: #111827;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    color: var(--gray-900);
+    line-height: 1.7;
+    font-size: 15px;
+    background: #fff;
+  }
+
+  .page-break { page-break-before: always; }
+  .no-break { page-break-inside: avoid; }
+
+  /* Print button bar */
+  .print-bar {
+    position: fixed; top: 0; left: 0; right: 0;
+    background: #111827; color: white;
+    padding: 12px 30px; display: flex; align-items: center; gap: 16px;
+    z-index: 9999; font-size: 14px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+  }
+  .print-bar button {
+    background: #16a34a; color: white; border: none;
+    padding: 8px 24px; border-radius: 6px; font-size: 14px;
+    font-weight: 600; cursor: pointer;
+  }
+  .print-bar button:disabled { background: #6b7280; cursor: wait; }
+  .print-bar button:hover:not(:disabled) { background: #15803d; }
+  .print-bar .status { font-size: 13px; color: #9ca3af; }
+  body { padding-top: 52px; }
+
+  @media print {
+    body { font-size: 12px; line-height: 1.5; padding-top: 0; }
+    .print-bar { display: none !important; }
+    .cover-page { height: 100vh; }
+    .page-break { page-break-before: always; }
+    .no-break { page-break-inside: avoid; }
+    .diagram-container { break-inside: avoid; }
+    .diagram-container svg { max-width: 100% !important; height: auto !important; }
+  }
+
+  /* Cover */
+  .cover-page {
+    min-height: 100vh; display: flex; flex-direction: column;
+    justify-content: center; align-items: center; text-align: center;
+    background: linear-gradient(135deg, #1a56db 0%, #0f3a8a 100%);
+    color: white; padding: 60px 40px;
+  }
+  .cover-page h1 { font-size: 40px; font-weight: 700; line-height: 1.2; max-width: 780px; margin-bottom: 20px; }
+  .cover-subtitle { font-size: 19px; font-weight: 300; opacity: 0.9; max-width: 600px; margin-bottom: 50px; }
+  .cover-meta { font-size: 14px; opacity: 0.7; line-height: 2; }
+  .cover-badge {
+    display: inline-block; background: rgba(255,255,255,0.2);
+    padding: 8px 24px; border-radius: 20px; font-size: 13px;
+    font-weight: 500; margin-bottom: 40px; letter-spacing: 1px; text-transform: uppercase;
+  }
+
+  .content { max-width: 880px; margin: 0 auto; padding: 40px 50px; }
+
+  h2 {
+    font-size: 26px; font-weight: 700; color: var(--gray-900);
+    margin: 50px 0 18px 0; padding-bottom: 10px;
+    border-bottom: 3px solid var(--primary);
+  }
+  h3 { font-size: 19px; font-weight: 600; color: var(--gray-700); margin: 28px 0 10px 0; }
+  h4 { font-size: 16px; font-weight: 600; color: var(--gray-700); margin: 18px 0 8px 0; }
+  p { margin-bottom: 14px; }
+  ul, ol { margin: 8px 0 14px 24px; }
+  li { margin-bottom: 5px; }
+  .section-number {
+    display: inline-block; background: var(--primary); color: white;
+    width: 34px; height: 34px; border-radius: 50%; text-align: center;
+    line-height: 34px; font-size: 15px; font-weight: 600; margin-right: 10px; vertical-align: middle;
+  }
+
+  /* Callouts */
+  .callout { padding: 18px 22px; border-radius: 8px; margin: 18px 0; border-left: 5px solid; }
+  .callout-blue { background: #eff6ff; border-color: var(--primary); }
+  .callout-red { background: #fef2f2; border-color: var(--danger); }
+  .callout-green { background: #f0fdf4; border-color: var(--success); }
+  .callout-yellow { background: #fffbeb; border-color: var(--warning); }
+  .callout-title { font-weight: 600; font-size: 15px; margin-bottom: 6px; }
+
+  /* Tables */
+  table { width: 100%; border-collapse: collapse; margin: 14px 0 22px 0; font-size: 14px; }
+  th { background: var(--gray-100); font-weight: 600; text-align: left; padding: 9px 12px; border: 1px solid var(--gray-200); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--gray-700); }
+  td { padding: 9px 12px; border: 1px solid var(--gray-200); vertical-align: top; }
+  tr:nth-child(even) { background: var(--gray-50); }
+
+  /* Metrics */
+  .metric-row { display: flex; gap: 14px; margin: 18px 0; flex-wrap: wrap; }
+  .metric-card { flex: 1; min-width: 170px; background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: 8px; padding: 18px; text-align: center; }
+  .metric-value { font-size: 30px; font-weight: 700; color: var(--primary); }
+  .metric-label { font-size: 12px; color: var(--gray-500); margin-top: 4px; }
+  .metric-card.red .metric-value { color: var(--danger); }
+  .metric-card.green .metric-value { color: var(--success); }
+  .metric-card.yellow .metric-value { color: var(--warning); }
+
+  /* Diagrams */
+  .diagram-container {
+    background: var(--gray-50); border: 1px solid var(--gray-200);
+    border-radius: 8px; padding: 20px; margin: 18px 0; overflow: visible;
+    text-align: center;
+  }
+  .diagram-container .mermaid { display: flex; justify-content: center; }
+  .diagram-container .mermaid svg { max-width: 100%; height: auto; }
+  .diagram-caption { text-align: center; font-size: 12px; color: var(--gray-500); font-style: italic; margin-top: 8px; }
+
+  /* Feature cards */
+  .feature-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 18px 0; }
+  .feature-card { border: 1px solid var(--gray-200); border-radius: 8px; padding: 18px; background: white; }
+  .feature-card h4 { margin: 0 0 6px 0; color: var(--primary); font-size: 15px; }
+  .feature-card p { font-size: 13px; color: var(--gray-700); margin: 0; line-height: 1.5; }
+  .feature-tag { display: inline-block; background: var(--primary-light); color: var(--primary); padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; margin-bottom: 6px; }
+
+  /* Persona cards */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 14px 0; }
+  .persona-card { border: 1px solid var(--gray-200); border-radius: 8px; padding: 18px; }
+  .persona-name { font-weight: 700; font-size: 15px; margin-bottom: 2px; }
+  .persona-role { font-size: 12px; color: var(--gray-500); margin-bottom: 8px; }
+  .persona-card p { font-size: 13px; margin: 0; }
+
+  /* Tags */
+  .tag-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+  .tag { background: var(--gray-100); border: 1px solid var(--gray-200); padding: 3px 12px; border-radius: 14px; font-size: 12px; font-weight: 500; }
+  .tag.blue { background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8; }
+  .tag.green { background: #f0fdf4; border-color: #bbf7d0; color: #15803d; }
+  .tag.orange { background: #fff7ed; border-color: #fed7aa; color: #c2410c; }
+
+  /* HTML Gantt replacement */
+  .gantt-table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; }
+  .gantt-table th { background: var(--primary); color: white; padding: 8px 10px; text-align: center; font-size: 11px; border: 1px solid #1a4fc0; }
+  .gantt-table td { padding: 6px 8px; border: 1px solid var(--gray-200); text-align: center; height: 32px; }
+  .gantt-table td.label { text-align: left; font-weight: 500; background: var(--gray-50); white-space: nowrap; min-width: 180px; }
+  .gantt-bar { border-radius: 4px; height: 22px; display: block; }
+  .gantt-a { background: #3b82f6; }
+  .gantt-b { background: #f59e0b; }
+  .gantt-shared { background: #6b7280; }
+  .gantt-milestone { background: var(--danger); font-size: 10px; color: white; padding: 2px 6px; border-radius: 3px; font-weight: 600; }
+
+  /* Process steps */
+  .steps { display: flex; gap: 0; margin: 20px 0; align-items: stretch; }
+  .step-item { flex: 1; padding: 16px; text-align: center; position: relative; }
+  .step-item:not(:last-child)::after {
+    content: ''; position: absolute; right: -10px; top: 50%; transform: translateY(-50%);
+    width: 0; height: 0; border-left: 10px solid var(--gray-200);
+    border-top: 10px solid transparent; border-bottom: 10px solid transparent; z-index: 2;
+  }
+  .step-num { display: inline-block; width: 28px; height: 28px; line-height: 28px; border-radius: 50%; background: var(--primary); color: white; font-weight: 700; font-size: 14px; margin-bottom: 6px; }
+  .step-title { font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+  .step-desc { font-size: 11px; color: var(--gray-500); line-height: 1.4; }
+  .step-green { background: #f0fdf4; }
+  .step-blue { background: #eff6ff; }
+  .step-orange { background: #fff7ed; }
+  .step-pink { background: #fef2f2; }
+
+  /* Risk matrix */
+  .risk-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border: 2px solid var(--gray-300); border-radius: 8px; overflow: hidden; margin: 18px 0; }
+  .risk-cell { padding: 14px; min-height: 90px; }
+  .risk-cell.red { background: #fef2f2; }
+  .risk-cell.yellow { background: #fffbeb; }
+  .risk-cell.green { background: #f0fdf4; }
+  .risk-cell-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: var(--gray-500); margin-bottom: 6px; }
+  .risk-item { font-size: 12px; margin: 3px 0; padding: 3px 8px; background: rgba(255,255,255,0.7); border-radius: 4px; display: inline-block; }
+
+  /* Weight bar */
+  .weight-bars { margin: 16px 0; }
+  .weight-row { display: flex; align-items: center; margin: 6px 0; font-size: 13px; }
+  .weight-label { width: 160px; font-weight: 500; }
+  .weight-track { flex: 1; height: 22px; background: var(--gray-100); border-radius: 4px; overflow: hidden; position: relative; }
+  .weight-fill { height: 100%; border-radius: 4px; display: flex; align-items: center; padding-left: 8px; color: white; font-weight: 600; font-size: 11px; }
+  .weight-fill.blue { background: var(--primary); }
+  .weight-fill.green { background: var(--success); }
+  .weight-fill.orange { background: var(--warning); }
+  .weight-fill.teal { background: #0d9488; }
+
+  /* DB schema visual */
+  .schema-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0; }
+  .schema-card { border: 2px solid var(--gray-300); border-radius: 8px; overflow: hidden; font-size: 13px; }
+  .schema-header { background: var(--primary); color: white; padding: 8px 12px; font-weight: 600; font-size: 13px; }
+  .schema-header.green-h { background: var(--success); }
+  .schema-header.orange-h { background: #ea580c; }
+  .schema-field { padding: 4px 12px; border-bottom: 1px solid var(--gray-100); font-family: 'SF Mono', Consolas, monospace; font-size: 12px; }
+  .schema-field:last-child { border: none; }
+  .schema-pk { color: var(--primary); font-weight: 600; }
+  .schema-fk { color: var(--warning); }
+
+  /* Timeline visual */
+  .timeline-list { margin: 20px 0; }
+  .tl-item { display: flex; gap: 16px; margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid var(--gray-100); }
+  .tl-item:last-child { border: none; }
+  .tl-week { min-width: 90px; }
+  .tl-badge { background: var(--primary); color: white; padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+  .tl-content { flex: 1; }
+  .tl-title { font-weight: 600; font-size: 15px; margin-bottom: 4px; }
+  .tl-desc { font-size: 13px; color: var(--gray-500); line-height: 1.5; }
+
+  /* Wireframe blocks */
+  .wireframe {
+    background: #1a1a2e; border-radius: 8px; padding: 24px; margin: 16px 0;
+    color: #e0e0e0; font-family: 'SF Mono', Consolas, monospace; font-size: 12px;
+    line-height: 1.5; white-space: pre; overflow-x: auto;
+  }
+</style>
+</head>
+<body>
+
+<!-- Print bar -->
+<div class="print-bar" id="printBar">
+  <button id="printBtn" disabled>Preparing diagrams...</button>
+  <span class="status" id="printStatus">Loading Mermaid diagrams, please wait...</span>
+</div>
+
+<!-- ==================== COVER PAGE ==================== -->
+<div class="cover-page">
+  <div class="cover-badge">DIGIT Health Campaign Management</div>
+  <h1>Population Denominator Intelligence &amp; Beneficiary Deduplication</h1>
+  <p class="cover-subtitle">Helping public health campaigns answer two critical questions:<br>
+    <strong>"Who are we missing?"</strong> and <strong>"Have we already registered this person?"</strong>
+  </p>
+  <div class="cover-meta">
+    Project Overview &amp; Design Document<br>
+    Version 2.0 &mdash; June 2026<br>
+    Prepared for eGov Foundation<br><br>
+    DIGIT Health | HCM Platform Extension
+  </div>
+</div>
+
+<!-- ==================== CONTENT ==================== -->
+<div class="content">
+
+<!-- TOC -->
+<div style="background:var(--gray-50); border:1px solid var(--gray-200); border-radius:8px; padding:24px 36px; margin:30px 0;">
+  <h3 style="margin-top:0; margin-bottom:14px;">Table of Contents</h3>
+  <ol style="list-style:none; margin:0; padding:0; counter-reset:toc;">
+    <li style="counter-increment:toc; padding:5px 0; border-bottom:1px solid var(--gray-200);"><strong>1.</strong> The Problem We Are Solving</li>
+    <li style="counter-increment:toc; padding:5px 0; border-bottom:1px solid var(--gray-200);"><strong>2.</strong> Project Vision &amp; Goals</li>
+    <li style="counter-increment:toc; padding:5px 0; border-bottom:1px solid var(--gray-200);"><strong>3.</strong> Who Benefits</li>
+    <li style="counter-increment:toc; padding:5px 0; border-bottom:1px solid var(--gray-200);"><strong>4.</strong> What We Are Building &mdash; Feature Overview</li>
+    <li style="counter-increment:toc; padding:5px 0; border-bottom:1px solid var(--gray-200);"><strong>5.</strong> How It Works (High-Level Design)</li>
+    <li style="counter-increment:toc; padding:5px 0; border-bottom:1px solid var(--gray-200);"><strong>6.</strong> Detailed Design (Low-Level Architecture)</li>
+    <li style="counter-increment:toc; padding:5px 0; border-bottom:1px solid var(--gray-200);"><strong>7.</strong> The User Experience &mdash; Screens &amp; Dashboards</li>
+    <li style="counter-increment:toc; padding:5px 0; border-bottom:1px solid var(--gray-200);"><strong>8.</strong> How We Roll This Out</li>
+    <li style="counter-increment:toc; padding:5px 0; border-bottom:1px solid var(--gray-200);"><strong>9.</strong> Development Timeline (8 Weeks)</li>
+    <li style="counter-increment:toc; padding:5px 0; border-bottom:1px solid var(--gray-200);"><strong>10.</strong> Risks &amp; How We Handle Them</li>
+    <li style="counter-increment:toc; padding:5px 0;"><strong>11.</strong> Key Decisions &amp; Why</li>
+  </ol>
+</div>
+
+<!-- ====== SECTION 1 ====== -->
+<div class="page-break"></div>
+<h2><span class="section-number">1</span> The Problem We Are Solving</h2>
+
+<p>DIGIT Health Campaign Management (HCM) is used by governments across Africa and South Asia to run public health campaigns &mdash; distributing bednets, delivering malaria medication, running vaccination drives, and more. These campaigns rely on field workers visiting households, registering people, and delivering interventions.</p>
+
+<p>Today, the system has <strong>two fundamental blind spots</strong> that undermine every campaign:</p>
+
+<h3>Blind Spot 1: "We don't know how many people we're supposed to reach"</h3>
+
+<div class="callout callout-red no-break">
+  <div class="callout-title">The Denominator Problem</div>
+  <p>Coverage is calculated as <strong>People Served / People Registered</strong>. But "Registered" is not the same as "Actually Exist." If a village has 1,200 people but only 800 were found and registered, the system shows 100% coverage (800/800) when reality is 67% (800/1,200). <strong>400 people are invisible to the system.</strong></p>
+</div>
+
+<h3>Blind Spot 2: "We don't know when we've counted someone twice"</h3>
+
+<div class="callout callout-red no-break">
+  <div class="callout-title">The Duplication Problem</div>
+  <p>Spelling variations ("Rahim" vs "Raheem"), different campaign rounds, different teams, and offline sync issues cause the same person to be registered multiple times. The system counts each as a separate beneficiary, <strong>inflating service numbers by 10-30%</strong>.</p>
+</div>
+
+<h3>The Combined Effect</h3>
+
+<div class="steps no-break">
+  <div class="step-item step-green">
+    <div class="step-num">1</div>
+    <div class="step-title">Actual Population</div>
+    <div class="step-desc"><strong>1,200</strong> people</div>
+  </div>
+  <div class="step-item step-blue">
+    <div class="step-num">2</div>
+    <div class="step-title">Field Workers Find</div>
+    <div class="step-desc"><strong>800</strong> people</div>
+  </div>
+  <div class="step-item step-orange">
+    <div class="step-num">3</div>
+    <div class="step-title">Duplicates Add</div>
+    <div class="step-desc"><strong>+120</strong> fake records</div>
+  </div>
+  <div class="step-item step-pink">
+    <div class="step-num">4</div>
+    <div class="step-title">System Reports</div>
+    <div class="step-desc"><strong>115%</strong> coverage<br>(really 57%)</div>
+  </div>
+</div>
+
+<div class="metric-row">
+  <div class="metric-card red"><div class="metric-value">30-50%</div><div class="metric-label">Potential coverage error</div></div>
+  <div class="metric-card yellow"><div class="metric-value">10-30%</div><div class="metric-label">Duplicate registration rate</div></div>
+  <div class="metric-card red"><div class="metric-value">Unknown</div><div class="metric-label">Invisible communities</div></div>
+</div>
+
+<!-- ====== SECTION 2 ====== -->
+<div class="page-break"></div>
+<h2><span class="section-number">2</span> Project Vision &amp; Goals</h2>
+
+<div class="callout callout-blue no-break">
+  <div class="callout-title">Mission</div>
+  <p>Enable health campaign teams to accurately understand <strong>who they are missing</strong> and <strong>when they have already registered someone</strong>, so every community receives the interventions it needs.</p>
+</div>
+
+<h3>Before vs. After</h3>
+
+<table>
+  <tr><th style="width:25%">Area</th><th>Today</th><th>After This Project</th></tr>
+  <tr><td><strong>Population baseline</strong></td><td>Only registered population known</td><td>Satellite + building data estimates true population per settlement</td></tr>
+  <tr><td><strong>Coverage accuracy</strong></td><td>Unreliable ratios</td><td>Gap between expected and actual visible on map, color-coded</td></tr>
+  <tr><td><strong>Invisible communities</strong></td><td>No detection</td><td>Building clusters with no registrations are auto-flagged</td></tr>
+  <tr><td><strong>Duplicate registrations</strong></td><td>Detected months later (if ever)</td><td>Detected instantly at point of registration, even offline</td></tr>
+  <tr><td><strong>Resource allocation</strong></td><td>Based on incomplete data</td><td>Risk scores help prioritize highest-need settlements</td></tr>
+</table>
+
+<h3>Design Principles</h3>
+<div class="tag-row">
+  <span class="tag blue">Offline-First</span>
+  <span class="tag blue">Modular &amp; Reusable</span>
+  <span class="tag blue">Open Source</span>
+  <span class="tag green">Explainable AI</span>
+  <span class="tag green">Low-End Device Compatible</span>
+  <span class="tag orange">DIGIT Platform Aligned</span>
+</div>
+
+<!-- ====== SECTION 3 ====== -->
+<h2><span class="section-number">3</span> Who Benefits</h2>
+
+<div class="two-col">
+  <div class="persona-card no-break">
+    <div class="persona-name">Field Workers</div>
+    <div class="persona-role">Frontline staff with mobile devices</div>
+    <p>When registering a beneficiary, the app <strong>alerts them if a similar person is already registered</strong>. Works even without internet.</p>
+  </div>
+  <div class="persona-card no-break">
+    <div class="persona-name">Field Supervisors</div>
+    <div class="persona-role">Team leads overseeing a district</div>
+    <p>See a <strong>color-coded map of coverage gaps</strong>, invisible settlements, and risk-ranked areas. Can redirect teams in real-time.</p>
+  </div>
+  <div class="persona-card no-break">
+    <div class="persona-name">Campaign Managers</div>
+    <div class="persona-role">National/regional planners</div>
+    <p>Access a <strong>dashboard showing overall coverage accuracy</strong>, duplication rates, invisible settlement counts, and risk prioritization.</p>
+  </div>
+  <div class="persona-card no-break">
+    <div class="persona-name">Program Directors / Donors</div>
+    <div class="persona-role">Decision-makers evaluating impact</div>
+    <p>Get <strong>trustworthy coverage numbers</strong> that account for missed populations and duplicates. More accurate reporting.</p>
+  </div>
+</div>
+
+<!-- ====== SECTION 4 ====== -->
+<div class="page-break"></div>
+<h2><span class="section-number">4</span> What We Are Building</h2>
+
+<p>Two independent capabilities that plug into the existing DIGIT HCM platform:</p>
+
+<h3>Capability 1: Population Denominator Intelligence (PDI)</h3>
+<div class="callout callout-green no-break">
+  <div class="callout-title">Answers: "Who are we missing?"</div>
+  <p>Uses satellite population data and building footprints to estimate the true population of every campaign area, then compares against registrations to find gaps.</p>
+</div>
+
+<div class="feature-grid">
+  <div class="feature-card no-break"><span class="feature-tag">Feature</span><h4>Population Estimation</h4><p>Estimate expected population and households using WorldPop satellite data and Google Open Buildings. Provides a confidence score.</p></div>
+  <div class="feature-card no-break"><span class="feature-tag">Feature</span><h4>Coverage Gap Detection</h4><p>Compare expected vs. registered. Classify each settlement as Green (on track), Yellow (moderate gap), or Red (critical gap).</p></div>
+  <div class="feature-card no-break"><span class="feature-tag">Feature</span><h4>Invisible Settlement Detection</h4><p>Find places where buildings exist in satellite data but no households are registered. Alert supervisors to these communities.</p></div>
+  <div class="feature-card no-break"><span class="feature-tag">Feature</span><h4>Risk Scoring</h4><p>Score settlements 0-100 based on population gap, past performance, facility distance, building density. Prioritize highest-need areas.</p></div>
+  <div class="feature-card no-break"><span class="feature-tag">Feature</span><h4>Web Dashboard</h4><p>KPI summary cards, interactive color-coded map, gap charts, invisible settlement table, and risk-ranked list for campaign managers.</p></div>
+  <div class="feature-card no-break"><span class="feature-tag">Feature</span><h4>Mobile Summary Cards</h4><p>Supervisors see expected vs. registered for each area on their phone. Coverage percentage and risk level. Works offline.</p></div>
+</div>
+
+<h3>Capability 2: Beneficiary Deduplication Engine (BDE)</h3>
+<div class="callout callout-green no-break">
+  <div class="callout-title">Answers: "Have we already registered this person?"</div>
+  <p>Instantly checks for duplicate registrations on the device itself, even without internet. Shows matches to field workers for confirmation.</p>
+</div>
+
+<div class="feature-grid">
+  <div class="feature-card no-break"><span class="feature-tag">Feature</span><h4>Fuzzy Name Matching</h4><p>"Rahim" and "Raheem" are detected as possible matches. Handles spelling variations and name reordering.</p></div>
+  <div class="feature-card no-break"><span class="feature-tag">Feature</span><h4>Multi-Attribute Scoring</h4><p>Checks name, age, gender, guardian, village, household, and GPS. Produces a confidence score (e.g., "89% likely duplicate").</p></div>
+  <div class="feature-card no-break"><span class="feature-tag">Feature</span><h4>Offline-First Design</h4><p>Runs entirely on the phone. No internet required. Uses the existing local database. Critical for low-connectivity campaign areas.</p></div>
+  <div class="feature-card no-break"><span class="feature-tag">Feature</span><h4>Reusable Flutter Package</h4><p>Built as a standalone package any DIGIT app can add. Works for bednet distribution, vaccination, malaria prevention, and future campaigns.</p></div>
+  <div class="feature-card no-break"><span class="feature-tag">Feature</span><h4>Server-Side Cross-Check</h4><p>When data syncs to the server, a second check catches duplicates across different teams and villages.</p></div>
+  <div class="feature-card no-break"><span class="feature-tag">Feature</span><h4>Supervisor Review Queue</h4><p>Suspected duplicates go to a review queue. Supervisors confirm or reject. Confirmed duplicates are merged.</p></div>
+</div>
+
+
+<!-- ====== SECTION 5: HLD ====== -->
+<div class="page-break"></div>
+<h2><span class="section-number">5</span> How It Works &mdash; High-Level Design</h2>
+
+<p>This section explains the system without technical jargon. Think of it as "the story of how data flows."</p>
+
+<h3>5.1 Population Intelligence &mdash; Four Steps</h3>
+
+<div class="steps no-break">
+  <div class="step-item step-green" style="border-right: 1px solid var(--gray-200);">
+    <div class="step-num">1</div>
+    <div class="step-title">Gather Data</div>
+    <div class="step-desc">Download satellite population grids (WorldPop) and building footprints (Google Open Buildings) for campaign area</div>
+  </div>
+  <div class="step-item step-blue" style="border-right: 1px solid var(--gray-200);">
+    <div class="step-num">2</div>
+    <div class="step-title">Compute Estimates</div>
+    <div class="step-desc">For each settlement: sum population grid = estimated people. Count buildings = estimated households.</div>
+  </div>
+  <div class="step-item step-orange" style="border-right: 1px solid var(--gray-200);">
+    <div class="step-num">3</div>
+    <div class="step-title">Find Gaps</div>
+    <div class="step-desc">Compare estimated vs. registered. Expected 1,200 but registered 680 = 520 people missing (43% gap).</div>
+  </div>
+  <div class="step-item step-pink">
+    <div class="step-num">4</div>
+    <div class="step-title">Visualize</div>
+    <div class="step-desc">Color-coded map (Green/Yellow/Red), invisible settlement alerts, risk-ranked lists, dashboard cards.</div>
+  </div>
+</div>
+
+<div class="callout callout-blue no-break">
+  <div class="callout-title">How do we estimate population from satellites?</div>
+  <p><strong>WorldPop</strong> provides calibrated population grids &mdash; a 100-meter grid where each cell estimates how many people live there (calibrated against census data). We sum cell values within each boundary.</p>
+  <p><strong>Google Open Buildings</strong> used AI to detect 1.8 billion building footprints from satellite imagery across Africa, South Asia, and Latin America. We count buildings in each area. If average household size is 5, then 240 buildings = ~1,200 people.</p>
+  <p>We combine both methods. When they agree, confidence is high. When they diverge, we flag for review.</p>
+</div>
+
+<h3>5.2 Deduplication &mdash; Two-Layer Defense</h3>
+
+<div class="diagram-container no-break">
+<pre class="mermaid">
+flowchart TB
+    A["Field worker registers<br>Rahim, Age 5, Male"] --> B["LAYER 1: Phone searches<br>local database instantly<br>(no internet needed)"]
+    B --> C{"Match found?"}
+    C -->|"Yes: Raheem, 89%"| D["Field worker reviews:<br>Same person or different?"]
+    C -->|"No matches"| E["Save new record"]
+    D -->|"Same"| F["Link to existing<br>(no duplicate)"]
+    D -->|"Different"| E
+    E --> G["When internet available:<br>LAYER 2: Server checks<br>ALL records nationwide"]
+    G --> H["Cross-boundary duplicates<br>flagged for supervisor"]
+
+    style B fill:#fff7ed,stroke:#f59e0b
+    style G fill:#eff6ff,stroke:#1a56db
+</pre>
+<p class="diagram-caption">Figure 1: Two-layer dedup &mdash; Layer 1 on-device (instant, offline) + Layer 2 server-side (comprehensive)</p>
+</div>
+
+<div class="callout callout-blue no-break">
+  <div class="callout-title">How does "fuzzy" name matching work?</div>
+  <ul>
+    <li><strong>Sound-alike matching:</strong> Encodes names by how they sound. "Rahim" and "Raheem" produce the same sound code.</li>
+    <li><strong>Character similarity:</strong> Measures closeness character-by-character. "Rahim" and "Raheem" share most characters.</li>
+    <li><strong>Name reordering:</strong> "Mohammed Ali" and "Ali Mohammed" recognized as potentially the same person.</li>
+  </ul>
+  <p>Then 7 attributes (name, age, gender, guardian, village, household, GPS) combine into a single confidence score.</p>
+</div>
+
+
+<!-- ====== SECTION 6: LLD ====== -->
+<div class="page-break"></div>
+<h2><span class="section-number">6</span> Detailed Design &mdash; Low-Level Architecture</h2>
+
+<h3>6.1 System Architecture</h3>
+
+<div class="diagram-container">
+<pre class="mermaid">
+flowchart TB
+    subgraph EXT["External Data"]
+        WP["WorldPop<br>Population Grids"]
+        GOB["Google Open Buildings<br>1.8B Building Footprints"]
+    end
+
+    subgraph BATCH["Python Batch Jobs"]
+        ING["Download + Compute<br>Population estimates<br>Gap analysis<br>Risk scores"]
+    end
+
+    subgraph DB["Database"]
+        PG["PostgreSQL + PostGIS<br>Pre-computed results"]
+    end
+
+    subgraph API["Java Spring Boot Services"]
+        PDI["Population Intelligence API"]
+        DED["Deduplication API"]
+    end
+
+    subgraph WEB["Web"]
+        DASH["HCM Console<br>+ PDI Dashboard"]
+    end
+
+    subgraph MOB["Mobile"]
+        APP["HCM Flutter App<br>+ Dedup Engine<br>+ Map Widgets"]
+    end
+
+    EXT --> BATCH --> DB --> API
+    API --> WEB
+    API --> MOB
+
+    style EXT fill:#e8f5e9
+    style BATCH fill:#fff3e0
+    style DB fill:#e3f2fd
+    style API fill:#fce4ec
+    style MOB fill:#f3e8ff
+</pre>
+<p class="diagram-caption">Figure 2: Full system architecture &mdash; from external data to user-facing applications</p>
+</div>
+
+<h3>6.2 Technology Choices</h3>
+
+<table>
+  <tr><th>Component</th><th>Technology</th><th>Why</th></tr>
+  <tr><td>PDI API Service</td><td>Java Spring Boot</td><td>All HCM backend services are Java. Ensures compatibility with auth, API gateway, Kafka.</td></tr>
+  <tr><td>Geodata Processing</td><td>Python (batch scripts)</td><td>Satellite raster processing needs rasterio/geopandas libraries. Runs periodically, not per request.</td></tr>
+  <tr><td>Spatial Database</td><td>PostgreSQL + PostGIS</td><td>HCM already uses PostgreSQL. PostGIS adds geographic query capabilities. Industry standard.</td></tr>
+  <tr><td>Dedup Engine</td><td>Pure Dart (Flutter package)</td><td>Runs on phone, no native dependencies. Uses same local database (Drift/SQLite) as HCM app.</td></tr>
+  <tr><td>Web Dashboard</td><td>React (HCM Console tab)</td><td>HCM Console is React. Dashboard added as a new tab within existing app.</td></tr>
+  <tr><td>Maps</td><td>Leaflet.js (web), flutter_map (mobile)</td><td>Open-source. Mobile version supports offline map tiles for field use.</td></tr>
+</table>
+
+<h3>6.3 How Population Data Flows</h3>
+
+<div class="diagram-container no-break">
+<pre class="mermaid">
+sequenceDiagram
+    participant Admin as Campaign Admin
+    participant Batch as Python Scripts
+    participant DB as PostGIS Database
+    participant API as Java PDI Service
+    participant Dash as Web Dashboard
+    participant App as Mobile App
+
+    Admin->>Batch: Campaign created, trigger data prep
+    Batch->>Batch: Download WorldPop + Open Buildings
+    Batch->>DB: Store population estimates,<br>gap reports, risk scores
+    API->>DB: Read pre-computed results
+    Dash->>API: Load dashboard data
+    API-->>Dash: KPI cards, map data, rankings
+    App->>API: Download settlement summaries
+    API-->>App: Cache locally for offline use
+</pre>
+<p class="diagram-caption">Figure 3: Population intelligence data flow from campaign setup to dashboard</p>
+</div>
+
+<h3>6.4 How Dedup Works on the Phone</h3>
+
+<div class="diagram-container no-break">
+<pre class="mermaid">
+sequenceDiagram
+    participant FW as Field Worker
+    participant Engine as Dedup Engine
+    participant DB as Local SQLite
+    participant Server as HCM Server
+
+    Note over FW,DB: During setup (online)
+    Server->>DB: Download existing beneficiaries
+    DB->>Engine: Build sound-code index
+
+    Note over FW,DB: During fieldwork (offline)
+    FW->>Engine: Submit "Rahim, Age 5"
+    Engine->>DB: Search by sound code + village
+    DB-->>Engine: 3 candidates found
+    Engine->>Engine: Score all 7 attributes
+    Engine-->>FW: "Raheem" 89% match
+
+    FW->>FW: Confirm same or different
+    FW->>DB: Save decision
+
+    Note over FW,Server: When online
+    FW->>Server: Sync all records
+    Server->>Server: Cross-check full database
+</pre>
+<p class="diagram-caption">Figure 4: Deduplication lifecycle from campaign setup through field use to sync</p>
+</div>
+
+<h3>6.5 Database Design</h3>
+
+<div class="schema-grid">
+  <div class="schema-card no-break">
+    <div class="schema-header">SETTLEMENT_BOUNDARY</div>
+    <div class="schema-field"><span class="schema-pk">id</span> (uuid, primary key)</div>
+    <div class="schema-field">boundary_code, name</div>
+    <div class="schema-field">polygon (geometry)</div>
+    <div class="schema-field">area_km2, parent_code</div>
+  </div>
+  <div class="schema-card no-break">
+    <div class="schema-header">POPULATION_ESTIMATE</div>
+    <div class="schema-field"><span class="schema-pk">id</span> (uuid, primary key)</div>
+    <div class="schema-field"><span class="schema-fk">boundary_code</span> (foreign key)</div>
+    <div class="schema-field">estimated_population, estimated_households</div>
+    <div class="schema-field">building_count, confidence, method</div>
+  </div>
+  <div class="schema-card no-break">
+    <div class="schema-header">GAP_REPORT</div>
+    <div class="schema-field"><span class="schema-pk">id</span> (uuid, primary key)</div>
+    <div class="schema-field"><span class="schema-fk">boundary_code, campaign_id</span></div>
+    <div class="schema-field">population_gap, household_gap</div>
+    <div class="schema-field">coverage_ratio, gap_classification</div>
+    <div class="schema-field">risk_score, risk_priority</div>
+  </div>
+  <div class="schema-card no-break">
+    <div class="schema-header">INVISIBLE_SETTLEMENT</div>
+    <div class="schema-field"><span class="schema-pk">id</span> (uuid, primary key)</div>
+    <div class="schema-field">centroid (geometry), building_count</div>
+    <div class="schema-field">estimated_population</div>
+    <div class="schema-field">nearest_boundary, distance_km</div>
+    <div class="schema-field">status (unverified/verified)</div>
+  </div>
+  <div class="schema-card no-break">
+    <div class="schema-header green-h">DEDUP_RECORD</div>
+    <div class="schema-field"><span class="schema-pk">id</span> (uuid, primary key)</div>
+    <div class="schema-field">individual_id, given_name, age, gender</div>
+    <div class="schema-field">boundary_code, latitude, longitude</div>
+    <div class="schema-field">soundex_key, metaphone_key</div>
+  </div>
+  <div class="schema-card no-break">
+    <div class="schema-header orange-h">DUPLICATE_PAIR</div>
+    <div class="schema-field"><span class="schema-pk">id</span> (uuid, primary key)</div>
+    <div class="schema-field"><span class="schema-fk">record_a, record_b</span></div>
+    <div class="schema-field">probability_score (0-100)</div>
+    <div class="schema-field">status (pending/confirmed/rejected)</div>
+    <div class="schema-field">resolution, resolved_by</div>
+  </div>
+</div>
+
+<h3>6.6 Duplicate Scoring: How the 7 Attributes Combine</h3>
+
+<div class="weight-bars no-break">
+  <div class="weight-row"><div class="weight-label">Name Similarity</div><div class="weight-track"><div class="weight-fill blue" style="width:100%">30%</div></div></div>
+  <div class="weight-row"><div class="weight-label">GPS Proximity</div><div class="weight-track"><div class="weight-fill teal" style="width:50%">15%</div></div></div>
+  <div class="weight-row"><div class="weight-label">Guardian Name</div><div class="weight-track"><div class="weight-fill teal" style="width:50%">15%</div></div></div>
+  <div class="weight-row"><div class="weight-label">Age Match</div><div class="weight-track"><div class="weight-fill green" style="width:50%">15%</div></div></div>
+  <div class="weight-row"><div class="weight-label">Village Match</div><div class="weight-track"><div class="weight-fill orange" style="width:33%">10%</div></div></div>
+  <div class="weight-row"><div class="weight-label">Household Match</div><div class="weight-track"><div class="weight-fill orange" style="width:33%">10%</div></div></div>
+  <div class="weight-row"><div class="weight-label">Gender Match</div><div class="weight-track"><div class="weight-fill orange" style="width:17%">5%</div></div></div>
+</div>
+
+<p style="font-size:13px; color:var(--gray-500);">Weights are configurable by campaign managers. We prioritize <strong>transparency</strong> &mdash; each factor's contribution is visible in the match output.</p>
+
+
+<!-- ====== SECTION 7: UX ====== -->
+<div class="page-break"></div>
+<h2><span class="section-number">7</span> The User Experience</h2>
+
+<h3>7.1 Field Worker: Duplicate Alert (Mobile)</h3>
+
+<div class="wireframe no-break">  +----------------------------------+
+  |  Register Individual             |
+  |                                  |
+  |  Name:     [ Rahim Hassan     ]  |
+  |  Age:      [ 5                ]  |
+  |  Gender:   (*) Male  ( ) Female  |
+  |  Guardian: [ Fatima Hassan    ]  |
+  |                                  |
+  |  [         SUBMIT              ] |
+  |                                  |
+  +==================================+
+  |  !! Possible Duplicate Found     |
+  +----------------------------------+
+  |                                  |
+  |  Raheem Hassan                   |
+  |  Age 5  -  Male  -  Village Kora |
+  |  Guardian: Fatima Hasan          |
+  |  Registered: 2 days ago          |
+  |                                  |
+  |  Match confidence: =======-  89% |
+  |                                  |
+  |  +-------------+ +-----------+   |
+  |  | Same Person | | Different |   |
+  |  +-------------+ +-----------+   |
+  +----------------------------------+</div>
+
+<h3>7.2 Campaign Manager: PDI Dashboard (Web)</h3>
+
+<div class="wireframe no-break">  +----------------------------------------------------------------+
+  |  HCM Console  |  Campaigns  | * Population Intelligence |  ... |
+  +----------------------------------------------------------------+
+  |                                                                  |
+  |  Campaign: Malaria SMC 2026 - District Mopti     [v Campaign]   |
+  |                                                                  |
+  |  +-----------+  +-----------+  +-----------+  +------------+    |
+  |  | Expected  |  |Registered |  |    Gap    |  | Invisible  |    |
+  |  | 125,400   |  |  89,200   |  |  36,200   |  | 12 sites   |    |
+  |  | people    |  |  people   |  |  (28.9%)  |  | ~840 ppl   |    |
+  |  +-----------+  +-----------+  +-----------+  +------------+    |
+  |                                                                  |
+  |  +-------------------------+  +------------------------------+  |
+  |  |                         |  | Top Gap Settlements          |  |
+  |  |   [INTERACTIVE MAP]     |  |                              |  |
+  |  |                         |  | 1. Kora    [R] Gap: 820     |  |
+  |  |   ## Green (on track)   |  | 2. Mawa    [R] Gap: 610     |  |
+  |  |   ## Yellow (moderate)  |  | 3. Niono   [Y] Gap: 340     |  |
+  |  |   ## Red (critical)     |  | 4. Segou   [Y] Gap: 280     |  |
+  |  |   ()  Invisible sites   |  |                              |  |
+  |  +-------------------------+  +------------------------------+  |
+  |                                                                  |
+  |  +------------------------------------------------------------+  |
+  |  | Coverage by Sub-District                                    |  |
+  |  | ================--------  Koro      68%                    |  |
+  |  | ===========-------------  Bankass   52%                    |  |
+  |  | ==================------  Mopti     82%                    |  |
+  |  | ========----------------  Djenne    38%                    |  |
+  |  +------------------------------------------------------------+  |
+  +------------------------------------------------------------------+</div>
+
+<h3>7.3 Supervisor: Invisible Settlement Alert</h3>
+
+<div class="callout callout-yellow no-break">
+  <div class="callout-title">Alert: Invisible Settlement Detected</div>
+  <p><strong>Location:</strong> 3.2 km northwest of Village Kora<br>
+  <strong>Buildings detected:</strong> 18 structures visible in satellite imagery<br>
+  <strong>Estimated population:</strong> ~90 people<br>
+  <strong>Status:</strong> No households have ever been registered here<br><br>
+  <strong>Recommended action:</strong> Send a field team to verify and register this settlement.</p>
+</div>
+
+
+<!-- ====== SECTION 8: ROLLOUT ====== -->
+<div class="page-break"></div>
+<h2><span class="section-number">8</span> How We Roll This Out</h2>
+
+<div class="steps no-break">
+  <div class="step-item step-blue" style="border-right: 1px solid var(--gray-200);">
+    <div class="step-num">1</div>
+    <div class="step-title">Standalone Build</div>
+    <div class="step-desc">Build &amp; test both capabilities independently with sample data</div>
+  </div>
+  <div class="step-item step-orange" style="border-right: 1px solid var(--gray-200);">
+    <div class="step-num">2</div>
+    <div class="step-title">Integration</div>
+    <div class="step-desc">Connect to HCM app and backend. Add dashboard to Console.</div>
+  </div>
+  <div class="step-item step-green" style="border-right: 1px solid var(--gray-200);">
+    <div class="step-num">3</div>
+    <div class="step-title">Pilot Campaign</div>
+    <div class="step-desc">Test in 1 district of a real campaign. Measure results.</div>
+  </div>
+  <div class="step-item step-pink">
+    <div class="step-num">4</div>
+    <div class="step-title">Scale</div>
+    <div class="step-desc">Roll out to full campaigns. Add countries. Tune models.</div>
+  </div>
+</div>
+
+<table>
+  <tr><th>Phase</th><th>What Happens</th><th>Success Criteria</th></tr>
+  <tr><td><strong>1. Standalone</strong></td><td>Build dedup Flutter package and PDI backend as independent modules. Test with sample data from a past campaign.</td><td>Dedup identifies known duplicates in test data. PDI estimates within 25% of actual registrations.</td></tr>
+  <tr><td><strong>2. Integration</strong></td><td>Add dedup package to HCM Flutter app. Deploy PDI service alongside HCM backend. Add dashboard tab to Console.</td><td>Dedup check fires on every registration. Dashboard loads with real data. No regressions.</td></tr>
+  <tr><td><strong>3. Pilot</strong></td><td>One district in an upcoming campaign. Pre-load geodata. Field workers use dedup-enabled app.</td><td>Duplicate detection rate measured. False positive rate &lt;15%. Coverage estimates validated.</td></tr>
+  <tr><td><strong>4. Scale</strong></td><td>Full campaigns across multiple districts/countries. Tune weights. Load more geodata.</td><td>Coverage accuracy improved. Duplicate rate reduced. Handles millions of records.</td></tr>
+</table>
+
+
+<!-- ====== SECTION 9: TIMELINE ====== -->
+<div class="page-break"></div>
+<h2><span class="section-number">9</span> Development Timeline &mdash; 8 Weeks</h2>
+
+<p>Two developers work in parallel. Developer A focuses on Population Intelligence (backend + GIS). Developer B focuses on Deduplication (Flutter SDK + integration).</p>
+
+<!-- HTML Gantt chart that always prints correctly -->
+<table class="gantt-table no-break" style="font-size:11px;">
+  <tr>
+    <th style="text-align:left;">Task</th>
+    <th>W1<br>Jun 16</th>
+    <th>W2<br>Jun 23</th>
+    <th>W3<br>Jun 30</th>
+    <th>W4<br>Jul 7</th>
+    <th>W5<br>Jul 14</th>
+    <th>W6<br>Jul 21</th>
+    <th>W7<br>Jul 28</th>
+    <th>W8<br>Aug 4</th>
+  </tr>
+  <tr>
+    <td class="label">Foundation &amp; Setup</td>
+    <td><span class="gantt-bar gantt-shared" style="width:100%;display:block;">&nbsp;</span></td>
+    <td><span class="gantt-bar gantt-shared" style="width:50%;display:block;">&nbsp;</span></td>
+    <td></td><td></td><td></td><td></td><td></td><td></td>
+  </tr>
+  <tr>
+    <td class="label">A: Geodata Pipeline</td>
+    <td></td>
+    <td><span class="gantt-bar gantt-a" style="width:100%;display:block;">&nbsp;</span></td>
+    <td><span class="gantt-bar gantt-a" style="width:100%;display:block;">&nbsp;</span></td>
+    <td></td><td></td><td></td><td></td><td></td>
+  </tr>
+  <tr>
+    <td class="label">A: Java API Service</td>
+    <td></td><td></td><td></td>
+    <td><span class="gantt-bar gantt-a" style="width:100%;display:block;">&nbsp;</span></td>
+    <td><span class="gantt-bar gantt-a" style="width:100%;display:block;">&nbsp;</span></td>
+    <td></td><td></td><td></td>
+  </tr>
+  <tr>
+    <td class="label">A: Web Dashboard</td>
+    <td></td><td></td><td></td><td></td><td></td>
+    <td><span class="gantt-bar gantt-a" style="width:100%;display:block;">&nbsp;</span></td>
+    <td><span class="gantt-bar gantt-a" style="width:100%;display:block;">&nbsp;</span></td>
+    <td></td>
+  </tr>
+  <tr>
+    <td class="label">B: Matching Algorithms</td>
+    <td></td>
+    <td><span class="gantt-bar gantt-b" style="width:100%;display:block;">&nbsp;</span></td>
+    <td><span class="gantt-bar gantt-b" style="width:50%;display:block;">&nbsp;</span></td>
+    <td></td><td></td><td></td><td></td><td></td>
+  </tr>
+  <tr>
+    <td class="label">B: Scoring + Flutter SDK</td>
+    <td></td><td></td>
+    <td><span class="gantt-bar gantt-b" style="width:50%;display:block;">&nbsp;</span></td>
+    <td><span class="gantt-bar gantt-b" style="width:100%;display:block;">&nbsp;</span></td>
+    <td><span class="gantt-bar gantt-b" style="width:100%;display:block;">&nbsp;</span></td>
+    <td></td><td></td><td></td>
+  </tr>
+  <tr>
+    <td class="label">B: HCM App Integration</td>
+    <td></td><td></td><td></td><td></td><td></td>
+    <td><span class="gantt-bar gantt-b" style="width:100%;display:block;">&nbsp;</span></td>
+    <td><span class="gantt-bar gantt-b" style="width:100%;display:block;">&nbsp;</span></td>
+    <td></td>
+  </tr>
+  <tr>
+    <td class="label">Integration &amp; Testing</td>
+    <td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+    <td><span class="gantt-bar gantt-shared" style="width:100%;display:block;">&nbsp;</span></td>
+  </tr>
+  <tr>
+    <td class="label" style="font-size:10px;">
+      <span style="display:inline-block;width:12px;height:10px;background:#3b82f6;border-radius:2px;"></span> Dev A &nbsp;
+      <span style="display:inline-block;width:12px;height:10px;background:#f59e0b;border-radius:2px;"></span> Dev B &nbsp;
+      <span style="display:inline-block;width:12px;height:10px;background:#6b7280;border-radius:2px;"></span> Shared
+    </td>
+    <td colspan="3" style="font-size:10px; text-align:left;"><span class="gantt-milestone">Architecture Approved</span></td>
+    <td colspan="2" style="font-size:10px; text-align:center;"><span class="gantt-milestone">Midpoint Demo</span></td>
+    <td colspan="2" style="font-size:10px; text-align:center;"><span class="gantt-milestone">Integration Working</span></td>
+    <td style="font-size:10px; text-align:center;"><span class="gantt-milestone">Final Demo</span></td>
+  </tr>
+</table>
+
+<h3>Week-by-Week Detail</h3>
+
+<div class="timeline-list">
+  <div class="tl-item no-break"><div class="tl-week"><span class="tl-badge">Week 1</span></div><div class="tl-content"><div class="tl-title">Foundation &amp; Architecture</div><div class="tl-desc">Environment setup (Docker, PostGIS, Flutter). Study HCM docs and codebase. Finalize architecture. Download sample geodata for a test region.</div></div></div>
+  <div class="tl-item no-break"><div class="tl-week"><span class="tl-badge">Week 2</span></div><div class="tl-content"><div class="tl-title">Database + First Components</div><div class="tl-desc"><strong>Dev A:</strong> Build WorldPop and Open Buildings data download scripts. <strong>Dev B:</strong> Implement name matching algorithms (Jaro-Winkler, Soundex, Metaphone) in Dart.</div></div></div>
+  <div class="tl-item no-break"><div class="tl-week"><span class="tl-badge">Week 3</span></div><div class="tl-content"><div class="tl-title">Core Processing Engines</div><div class="tl-desc"><strong>Dev A:</strong> Population estimation engine + settlement clustering (DBSCAN). <strong>Dev B:</strong> Multi-attribute scoring engine + phonetic indexing strategy.</div></div></div>
+  <div class="tl-item no-break"><div class="tl-week"><span class="tl-badge">Week 4</span></div><div class="tl-content"><div class="tl-title">API Services + SDK</div><div class="tl-desc"><strong>Dev A:</strong> Java Spring Boot service scaffold, REST endpoints. <strong>Dev B:</strong> Drift database integration, DedupEngine public API.</div></div></div>
+  <div class="tl-item no-break"><div class="tl-week"><span class="tl-badge">Week 5</span></div><div class="tl-content"><div class="tl-title">Midpoint Demo: APIs Live + SDK Alpha</div><div class="tl-desc"><strong>Dev A:</strong> All PDI endpoints functional. <strong>Dev B:</strong> Complete Flutter SDK package with tests and performance benchmarks.</div></div></div>
+  <div class="tl-item no-break"><div class="tl-week"><span class="tl-badge">Week 6</span></div><div class="tl-content"><div class="tl-title">UI + Integration</div><div class="tl-desc"><strong>Dev A:</strong> Web dashboard with map and charts. <strong>Dev B:</strong> Dedup review UI widgets + registration flow integration in HCM app.</div></div></div>
+  <div class="tl-item no-break"><div class="tl-week"><span class="tl-badge">Week 7</span></div><div class="tl-content"><div class="tl-title">Full Integration</div><div class="tl-desc"><strong>Dev A:</strong> Dashboard polish, data export. <strong>Dev B:</strong> Server-side dedup + mobile map widgets. Cross-team integration testing begins.</div></div></div>
+  <div class="tl-item no-break"><div class="tl-week"><span class="tl-badge">Week 8</span></div><div class="tl-content"><div class="tl-title">Testing, Docs &amp; Final Demo</div><div class="tl-desc">End-to-end testing. Performance validation on low-end devices. API documentation. Deployment guide. Final presentation.</div></div></div>
+</div>
+
+
+<!-- ====== SECTION 10: RISKS ====== -->
+<div class="page-break"></div>
+<h2><span class="section-number">10</span> Risks &amp; How We Handle Them</h2>
+
+<div class="risk-grid no-break">
+  <div class="risk-cell yellow">
+    <div class="risk-cell-label">High Impact / Low Likelihood</div>
+    <div class="risk-item">Phone storage exceeds limits</div>
+  </div>
+  <div class="risk-cell red">
+    <div class="risk-cell-label">High Impact / High Likelihood</div>
+    <div class="risk-item">Non-Latin script matching fails</div>
+    <div class="risk-item">Slow on low-end phones</div>
+  </div>
+  <div class="risk-cell green">
+    <div class="risk-cell-label">Low Impact / Low Likelihood</div>
+    <div class="risk-item">Batch processing slow</div>
+  </div>
+  <div class="risk-cell yellow">
+    <div class="risk-cell-label">Low Impact / High Likelihood</div>
+    <div class="risk-item">Estimates vary by terrain</div>
+    <div class="risk-item">Too many false positive alerts</div>
+  </div>
+</div>
+
+<table>
+  <tr><th>Risk</th><th>What Could Happen</th><th>Our Mitigation</th></tr>
+  <tr><td><strong>Non-Latin scripts</strong></td><td>Name matching may not work for Arabic, Amharic, or other scripts.</td><td>Test with local language data early. Add locale-specific sound encoders. Scoring weights are adjustable.</td></tr>
+  <tr><td><strong>Slow on low-end phones</strong></td><td>Dedup search exceeds 200ms on old Android devices.</td><td>"Blocking" reduces search from hundreds to 2-5 records. Benchmark on low-end devices in Week 3.</td></tr>
+  <tr><td><strong>Population estimate accuracy</strong></td><td>100m grid too coarse for small settlements.</td><td>Cross-validate with two methods. Low confidence flags areas for manual review.</td></tr>
+  <tr><td><strong>False positive alerts</strong></td><td>Too many "possible match" alerts annoy field workers.</td><td>Start conservative (80% threshold). Track accept/reject rates. Tune from real usage data.</td></tr>
+  <tr><td><strong>Large map files</strong></td><td>Offline map tiles too big for low-bandwidth download.</td><td>Reduced zoom levels, compressed tiles. Map is optional download, not mandatory.</td></tr>
+  <tr><td><strong>Phone storage</strong></td><td>Dedup index + map tiles + HCM data exceeds storage.</td><td>Index scoped to assigned boundaries only. Automatic cleanup of old records.</td></tr>
+</table>
+
+<h3>Key Assumptions</h3>
+<div class="callout callout-blue no-break">
+  <ul>
+    <li>WorldPop and Google Open Buildings data covers target campaign countries (confirmed for most of Africa, South Asia)</li>
+    <li>Household registrations include GPS coordinates (confirmed)</li>
+    <li>Average household size available per region (from census/configuration)</li>
+    <li>Campaign boundaries are defined as polygons in HCM</li>
+    <li>Target devices have 2GB+ RAM and 1GB+ free storage</li>
+    <li>Field workers can judge whether flagged duplicates are the same person</li>
+  </ul>
+</div>
+
+
+<!-- ====== SECTION 11: DECISIONS ====== -->
+<h2><span class="section-number">11</span> Key Decisions &amp; Why</h2>
+
+<table>
+  <tr><th>Decision</th><th>Chosen</th><th>Alternative</th><th>Reasoning</th></tr>
+  <tr><td>Where does dedup run?</td><td><strong>On the phone (offline)</strong></td><td>Server-only</td><td>Campaigns operate without internet. Server-only would miss most registrations.</td></tr>
+  <tr><td>How smart is matching?</td><td><strong>Weighted scoring with transparent rules</strong></td><td>Deep learning model</td><td>Requirement demands explainability. Managers can see and adjust why a match was flagged. ML can be added later.</td></tr>
+  <tr><td>Local database?</td><td><strong>Drift (SQLite)</strong></td><td>Isar, Hive</td><td>HCM already uses Drift. Same database, no new technology, works with sync patterns.</td></tr>
+  <tr><td>PDI API technology?</td><td><strong>Java Spring Boot</strong></td><td>Python FastAPI</td><td>HCM backend is Java. Must match for authentication, API gateway, and Kafka compatibility.</td></tr>
+  <tr><td>Geodata processing?</td><td><strong>Python batch + Java API</strong></td><td>All Java</td><td>Satellite raster libraries only exist in Python. Batch writes to database; Java reads. Clean separation.</td></tr>
+  <tr><td>Population computation?</td><td><strong>Pre-computed in batch</strong></td><td>On-demand per request</td><td>Raster processing is heavy. Pre-compute once = fast dashboard loads + mobile offline support.</td></tr>
+  <tr><td>Mobile maps?</td><td><strong>flutter_map + offline MBTiles</strong></td><td>Google Maps SDK</td><td>Must be open-source and work offline. Google Maps needs API key, internet, and has costs.</td></tr>
+</table>
+
+
+<!-- FOOTER -->
+<br><br>
+<div class="callout callout-green" style="margin-top: 30px;">
+  <div class="callout-title">What Comes Next</div>
+  <p>This document is the foundation. The detailed task breakdown is in <strong>TASK_PLAN.md</strong>. The full technical architecture with API contracts, database DDL, and code-level design is in <strong>ARCHITECTURE.md</strong>.</p>
+</div>
+
+<hr style="border: none; border-top: 3px solid var(--primary); margin: 40px 0;">
+<p style="text-align: center; color: var(--gray-500); font-size: 13px;">
+  Population Denominator Intelligence &amp; Beneficiary Deduplication for HCM<br>
+  Version 2.0 &mdash; June 2026 &mdash; DIGIT Health | eGov Foundation
+</p>
+
+</div><!-- end .content -->
+
+<script>
+  // Initialize Mermaid with simpler settings
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'default',
+    flowchart: { useMaxWidth: true, htmlLabels: true, curve: 'linear' },
+    sequence: { useMaxWidth: true, actorMargin: 40, messageFontSize: 12 },
+    securityLevel: 'loose'
+  });
+
+  // Wait for all Mermaid diagrams to render, then enable the Print button
+  function waitForMermaid() {
+    const diagrams = document.querySelectorAll('.mermaid');
+    const svgs = document.querySelectorAll('.mermaid svg');
+    const btn = document.getElementById('printBtn');
+    const status = document.getElementById('printStatus');
+
+    if (svgs.length >= diagrams.length && svgs.length > 0) {
+      // All rendered
+      btn.disabled = false;
+      btn.textContent = 'Save as PDF (Ctrl+P)';
+      status.textContent = 'All ' + svgs.length + ' diagrams rendered. Ready to print.';
+      btn.onclick = function() { window.print(); };
+    } else {
+      status.textContent = 'Rendering diagrams... (' + svgs.length + '/' + diagrams.length + ')';
+      setTimeout(waitForMermaid, 500);
+    }
+  }
+
+  // Start checking after Mermaid has had a moment to init
+  setTimeout(waitForMermaid, 1500);
+</script>
+</body>
+</html>

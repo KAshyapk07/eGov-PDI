@@ -1,0 +1,389 @@
+import React, { useState, useMemo, Fragment, useEffect } from "react";
+import { useTranslation } from "react-i18next";
+import { useLocation, useNavigate } from "react-router-dom";
+import { Wrapper } from "./SelectingBoundaryComponent";
+// Removed TextBlock and Switch imports - unified campaign toggle card is commented out (controlled by DEFAULT_IS_UNIFIED_CAMPAIGN)
+// import {  TextBlock, Switch } from "@egovernments/digit-ui-components";
+import { AlertCard, Card, HeaderComponent, Loader, PopUp, Button, CardText } from "@egovernments/digit-ui-components";
+import { CONSOLE_MDMS_MODULENAME } from "../Module";
+import TagComponent from "./TagComponent";
+import { I18N_KEYS } from "../utils/i18nKeyConstants";
+
+// Default value for unified campaign mode. Change this to `false` to revert to normal campaign mode.
+const DEFAULT_IS_UNIFIED_CAMPAIGN = true;
+
+const SelectingBoundariesDuplicate = ({ onSelect, formData, ...props }) => {
+  // Stabilize props reference to prevent unnecessary re-renders
+  const sessionData = useMemo(
+    () => props?.props?.sessionData?.HCM_CAMPAIGN_SELECTING_BOUNDARY_DATA?.boundaryType,
+    [JSON.stringify(props?.props?.sessionData?.HCM_CAMPAIGN_SELECTING_BOUNDARY_DATA?.boundaryType)]
+  );
+
+  const { t } = useTranslation();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const isDraftCampaign = location.state?.isDraftCampaign;
+  const queryParams = Digit.Hooks.useQueryParams();
+  const tenantId = Digit.ULBService.getStateId();
+  const searchParams = new URLSearchParams(location.search);
+  const hierarchyType = props?.props?.dataParams?.hierarchyType || Digit.SessionStorage.get("HCM_CAMPAIGN_SELECTED_HIERARCHY")?.name;
+  const campaignNumber = searchParams.get("campaignNumber");
+  const draft = searchParams.get("draft");
+  const { data: HierarchySchema } = Digit.Hooks.useCustomMDMS(
+    tenantId,
+    CONSOLE_MDMS_MODULENAME,
+    [{ name: "HierarchySchema" }],
+    { select: (MdmsRes) => MdmsRes },
+    { schemaCode: `${CONSOLE_MDMS_MODULENAME}.HierarchySchema` }
+  );
+  const { data: mailConfig } = Digit.Hooks.useCustomMDMS(
+    tenantId,
+    CONSOLE_MDMS_MODULENAME,
+    [{ name: "mailConfig" }],
+    { select: (MdmsRes) => MdmsRes },
+    { schemaCode: `${CONSOLE_MDMS_MODULENAME}.mailConfig` }
+  );
+  const lowestHierarchy = useMemo(() => {
+    // Try MDMS first
+    const schemas = HierarchySchema?.[CONSOLE_MDMS_MODULENAME]?.HierarchySchema || [];
+    const fromMdms = schemas.find((item) => item.hierarchy === hierarchyType)?.lowestHierarchy;
+    if (fromMdms) return fromMdms;
+    // Fallback: derive from boundary hierarchy definition (leaf = type not used as any other's parent)
+    const boundaryHierarchy = props?.props?.dataParams?.hierarchy?.boundaryHierarchy || [];
+    if (!boundaryHierarchy.length) return undefined;
+    const typesUsedAsParent = new Set(boundaryHierarchy.map((b) => b.parentBoundaryType).filter(Boolean));
+    const leaf = boundaryHierarchy.find((b) => !typesUsedAsParent.has(b.boundaryType));
+    return leaf?.boundaryType;
+  }, [HierarchySchema, hierarchyType, props?.props?.dataParams?.hierarchy]);
+  // Initialize from session data to prevent losing data on re-render
+  const [selectedData, setSelectedData] = useState(
+    props?.props?.sessionData?.HCM_CAMPAIGN_SELECTING_BOUNDARY_DATA?.boundaryType?.selectedData || []
+  );
+  const [boundaryOptions, setBoundaryOptions] = useState(
+    props?.props?.sessionData?.HCM_CAMPAIGN_SELECTING_BOUNDARY_DATA?.boundaryType?.boundaryData || {}
+  );
+  const [isDataLoaded, setIsDataLoaded] = useState(false);
+  const [executionCount, setExecutionCount] = useState(0);
+  const [currentStep, setCurrentStep] = useState(2);
+  const [isLoading, setIsLoading] = useState(true);
+  const [showPopUp, setShowPopUp] = useState(false);
+  const currentKey = searchParams.get("key");
+  const [key, setKey] = useState(() => {
+    const keyParam = searchParams.get("key");
+    return keyParam ? parseInt(keyParam) : 1;
+  });
+  const campaignName = props?.props?.sessionData?.HCM_CAMPAIGN_NAME?.campaignName;
+  const [restrictSelection, setRestrictSelection] = useState(null);
+  // setIsUnifiedCampaign is not used since toggle is removed; kept as comment for future re-enablement
+  // const [isUnifiedCampaign, setIsUnifiedCampaign] = useState(
+  //   props?.props?.sessionData?.HCM_CAMPAIGN_SELECTING_BOUNDARY_DATA?.boundaryType?.isUnifiedCampaign || false
+  // );
+  const [isUnifiedCampaign] = useState(DEFAULT_IS_UNIFIED_CAMPAIGN);
+
+  // useEffect(() => {
+  //   setKey(currentKey);
+  //   setCurrentStep(currentKey);
+  // }, [currentKey]);
+
+  const reqCriteria = {
+    url: `/project-factory/v1/project-type/search`,
+    body: {
+      CampaignDetails: {
+        tenantId: tenantId,
+        campaignNumber: campaignNumber,
+      },
+    },
+    config: {
+      enabled: !!campaignNumber,
+      select: (data) => {
+        return data?.CampaignDetails?.[0];
+      },
+    },
+  };
+
+  const { data: campaignData, isFetching } = Digit.Hooks.useCustomAPIHook(reqCriteria);
+
+  // Load data from session/API - only run once when API data is ready
+  useEffect(() => {
+    // Wait for API to finish fetching if campaignNumber exists
+    if (campaignNumber && isFetching) return;
+
+    // Only load from campaignData if sessionData is not available
+    if (!sessionData && campaignData?.boundaries) {
+      setSelectedData(campaignData?.boundaries || []);
+      // Commented: isUnifiedCampaign is now always controlled by DEFAULT_IS_UNIFIED_CAMPAIGN, user toggle removed
+      // if (campaignData?.additionalDetails?.isUnifiedCampaign !== undefined) {
+      //   setIsUnifiedCampaign(campaignData?.additionalDetails?.isUnifiedCampaign);
+      // }
+    } else if (sessionData) {
+      // Session data takes priority - only set if different to avoid unnecessary re-renders
+      if (sessionData?.selectedData && JSON.stringify(sessionData.selectedData) !== JSON.stringify(selectedData)) {
+        setSelectedData(sessionData.selectedData);
+      }
+      if (sessionData?.boundaryData && JSON.stringify(sessionData.boundaryData) !== JSON.stringify(boundaryOptions)) {
+        setBoundaryOptions(sessionData.boundaryData);
+      }
+      // Commented: isUnifiedCampaign is now always controlled by DEFAULT_IS_UNIFIED_CAMPAIGN, user toggle removed
+      // if (sessionData?.isUnifiedCampaign !== undefined && sessionData.isUnifiedCampaign !== isUnifiedCampaign) {
+      //   setIsUnifiedCampaign(sessionData.isUnifiedCampaign);
+      // }
+    }
+
+    // Mark data as loaded only after we've processed available data
+    if (!isDataLoaded) {
+      setIsDataLoaded(true);
+    }
+    setTimeout(() => setIsLoading(false), 10);
+  }, [isFetching, campaignNumber]);
+
+  // Only save to session after data is loaded to prevent overwriting with empty values
+  useEffect(() => {
+    if (!isDataLoaded) return;
+
+    onSelect("boundaryType", {
+      selectedData: selectedData,
+      boundaryData: boundaryOptions,
+      updateBoundary: !restrictSelection,
+      isUnifiedCampaign,
+    });
+  }, [selectedData, boundaryOptions, restrictSelection, isUnifiedCampaign, isDataLoaded]);
+
+  useEffect(() => {
+    // Show popup on initial load if there's upload data and user hasn't made a choice yet
+    if (restrictSelection !== null) return;
+
+    const hasUploadData =
+      props?.props?.sessionData?.HCM_CAMPAIGN_UPLOAD_BOUNDARY_DATA?.uploadBoundary?.uploadedFile?.length > 0 ||
+      props?.props?.sessionData?.HCM_CAMPAIGN_UPLOAD_FACILITY_DATA?.uploadFacility?.uploadedFile?.length > 0 ||
+      props?.props?.sessionData?.HCM_CAMPAIGN_UPLOAD_USER_DATA?.uploadUser?.uploadedFile?.length > 0 ||
+      props?.props?.sessionData?.HCM_CAMPAIGN_UPLOAD_UNIFIED_DATA?.uploadUnified?.uploadedFile?.length > 0;
+
+    if (!hasUploadData) return;
+
+    // If boundaries are empty but upload data exists, data is stale (e.g., hierarchy type changed).
+    // Auto-clear without showing the popup.
+    const hasBoundaries = props?.props?.sessionData?.HCM_CAMPAIGN_SELECTING_BOUNDARY_DATA?.boundaryType?.selectedData?.length > 0;
+    if (!hasBoundaries) {
+      setRestrictSelection(false);
+      return;
+    }
+
+    setRestrictSelection(true);
+    setShowPopUp(true);
+  }, [props?.props?.sessionData, restrictSelection]);
+
+  const handleBoundaryChange = (value) => {
+    setBoundaryOptions(value?.boundaryOptions);
+    setSelectedData(value?.selectedData);
+    setRestrictSelection(value?.restrictSelection);
+  };
+
+  // function updateUrlParams(params) {
+  //   const url = new URL(window.location.href);
+  //   Object.entries(params).forEach(([key, value]) => {
+  //     url.searchParams.set(key, value);
+  //   });
+  //   window.history.replaceState({}, "", url);
+  // }
+
+  // useEffect(() => {
+  //   updateUrlParams({ key: key });
+  //   window.dispatchEvent(new Event("checking"));
+  // }, [key]);
+
+  const checkDataPresent = ({ action }) => {
+    if (action === false) {
+      setShowPopUp(false);
+      setRestrictSelection(false);
+
+      // Clear upload session data when updating boundaries
+      const currentSessionData = Digit.SessionStorage.get("HCM_CAMPAIGN_MANAGER_UPLOAD_ID");
+      const formData = Digit.SessionStorage.get("HCM_CAMPAIGN_MANAGER_FORM_DATA");
+      const campaignSetupData = Digit.SessionStorage.get("HCM_ADMIN_CONSOLE_SET_UP");
+      const unifiedUploadData = Digit.SessionStorage.get("HCM_ADMIN_CONSOLE_UNIFIED_UPLOAD_DATA");
+      if (currentSessionData || formData || campaignSetupData || unifiedUploadData) {
+        Digit.SessionStorage.set("HCM_CAMPAIGN_MANAGER_FORM_DATA", {
+          ...currentSessionData,
+          HCM_CAMPAIGN_UPLOAD_FACILITY_DATA: {
+            uploadFacility: {
+              uploadedFile: [],
+              isSuccess: false,
+            },
+          },
+          HCM_CAMPAIGN_UPLOAD_USER_DATA: {
+            uploadUser: {
+              uploadedFile: [],
+              isSuccess: false,
+            },
+          },
+          HCM_CAMPAIGN_UPLOAD_UNIFIED_DATA: {
+            uploadUnified: {
+              uploadedFile: [],
+              isSuccess: false,
+            },
+          },
+        });
+      }
+
+      return;
+    }
+    if (action === true) {
+      setShowPopUp(false);
+      setRestrictSelection(true);
+      return;
+    }
+  };
+
+  const Template = {
+    url: "/project-factory/v1/project-type/cancel-campaign",
+    body: {
+      CampaignDetails: {
+        tenantId: tenantId,
+        campaignId: queryParams?.id,
+      },
+    },
+  };
+  const mutation = Digit.Hooks.useCustomAPIMutationHook(Template);
+
+  const handleCancelClick = async () => {
+    await mutation.mutate(
+      {},
+      {
+        onSuccess: async (result) => {
+          navigate(`/${window?.contextPath}/employee/campaign/my-campaign-new`);
+        },
+        onError: (error, result) => {
+          const errorCode = error?.response?.data?.Errors?.[0]?.code;
+          console.error(errorCode);
+        },
+      }
+    );
+  };
+
+  const isBoundaryDataLoading = !!hierarchyType && props?.props?.hierarchyData === undefined;
+
+  if ((draft && isLoading) || isBoundaryDataLoading) {
+    return <Loader page={true} variant={"PageLoader"} />;
+  }
+
+  return (
+    <>
+      <div className="container-full">
+        <div className="card-container-delivery">
+          <Card>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <TagComponent campaignName={campaignName} />
+                {hierarchyType && (
+                  <TagComponent
+                    campaignName={`${t("HCM_HIERARCHY_TYPE")} : ${hierarchyType}`}
+                    type="success"
+                  />
+                )}
+              </div>
+              {/* Commenting Cancel Campaign feature */}
+              {/* {isDraftCampaign ? (
+                <div className="digit-tag-container" style={{ margin: "0rem" }}>
+                  <Chip text={`${t(`CANCEL_CAMPAIGN`)}`} onClick={handleCancelClick} hideClose={false} />
+                </div>
+              ) : null} */}
+            </div>
+            <HeaderComponent className="select-boundary-screen-heading">{t(`CAMPAIGN_SELECT_BOUNDARY`)}</HeaderComponent>
+            <p className="dates-description">{t(`CAMPAIGN_SELECT_BOUNDARIES_DESCRIPTION`)}</p>
+            <Wrapper
+              hierarchyType={hierarchyType}
+              lowest={lowestHierarchy}
+              selectedData={selectedData}
+              boundaryOptions={boundaryOptions}
+              hierarchyData={props?.props?.hierarchyData}
+              isMultiSelect={"true"}
+              restrictSelection={restrictSelection}
+              onSelect={(value) => {
+                handleBoundaryChange(value);
+              }}
+            ></Wrapper>
+          </Card>
+          {/*Commenting alert card for now*/}
+          {/* <AlertCard
+            populators={{
+              name: "infocard",
+            }}
+            variant="default"
+            style={{ margin: "0rem", maxWidth: "100%", marginTop: "1.5rem", marginBottom: "2rem" }}
+            additionalElements={[
+              <span style={{ color: "#505A5F" }}>
+                {t("HCM_BOUNDARY_INFO")}
+                &nbsp;
+                <a href={`mailto:${mailConfig?.[CONSOLE_MDMS_MODULENAME]?.mailConfig?.[0]?.mailId}`} style={{ color: "black" }}>
+                  {mailConfig?.[CONSOLE_MDMS_MODULENAME]?.mailConfig?.[0]?.mailId}
+                </a>
+              </span>,
+            ]}
+            label={"Info"}
+          /> */}
+          {/* Commented: Unified campaign toggle card removed - isUnifiedCampaign is now always controlled by DEFAULT_IS_UNIFIED_CAMPAIGN constant.
+              To re-enable the toggle, uncomment this card and restore the session/API overrides in the useEffects above. */}
+          {/* <Card style={{ marginTop: "1.5rem", marginBottom: "1.5rem" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <TextBlock
+                subHeader={t("HCM_UNIFIED_UPLOAD_OPTION")}
+                subHeaderClassName={"switch-unified-upload"}
+                body={t("HCM_UNIFIED_UPLOAD_OPTION_DESC")}
+              ></TextBlock>
+              <Switch
+                isLabelFirst={true}
+                label={t("HCM_USE_UNIFIED_UPLOAD")}
+                isCheckedInitially={isUnifiedCampaign}
+                onToggle={(checked) => setIsUnifiedCampaign(checked)}
+                disabled={restrictSelection}
+              />
+            </div>
+          </Card> */}
+        </div>
+      </div>
+      {showPopUp && (
+        <PopUp
+          className={"boundaries-pop-module"}
+          type={"default"}
+          heading={t(I18N_KEYS.COMPONENTS.ES_CAMPAIGN_UPDATE_BOUNDARY_MODAL_HEADER)}
+          children={[
+            <div>
+              <CardText style={{ margin: 0 }}>{t(I18N_KEYS.COMPONENTS.ES_CAMPAIGN_UPDATE_BOUNDARY_MODAL_TEXT) + " "}</CardText>
+            </div>,
+          ]}
+          onOverlayClick={() => {
+            setShowPopUp(false);
+          }}
+          onClose={() => {
+            setShowPopUp(false);
+          }}
+          footerChildren={[
+            <Button
+              type={"button"}
+              size={"large"}
+              variation={"secondary"}
+              label={t(I18N_KEYS.COMPONENTS.ES_CAMPAIGN_BOUNDARY_MODAL_BACK)}
+              title={t(I18N_KEYS.COMPONENTS.ES_CAMPAIGN_BOUNDARY_MODAL_BACK)}
+              onClick={() => {
+                checkDataPresent({ action: false });
+              }}
+            />,
+            <Button
+              type={"button"}
+              size={"large"}
+              variation={"primary"}
+              label={t(I18N_KEYS.COMPONENTS.ES_CAMPAIGN_BOUNDARY_MODAL_SUBMIT)}
+              title={t(I18N_KEYS.COMPONENTS.ES_CAMPAIGN_BOUNDARY_MODAL_SUBMIT)}
+              onClick={() => {
+                checkDataPresent({ action: true });
+              }}
+            />,
+          ]}
+          sortFooterChildren={true}
+        ></PopUp>
+      )}
+    </>
+  );
+};
+
+export default SelectingBoundariesDuplicate;

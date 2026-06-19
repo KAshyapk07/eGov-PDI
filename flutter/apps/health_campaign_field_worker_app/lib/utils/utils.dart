@@ -1,0 +1,859 @@
+library app_utils;
+
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:attendance_management/attendance_management.dart'
+    as attendance_mappers;
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:crypto/crypto.dart';
+import 'package:device_info_plus/device_info_plus.dart';
+import 'package:digit_data_model/data_model.dart';
+import 'package:digit_data_model/data_model.init.dart' as data_model_mappers;
+import 'package:digit_data_model/models/entities/attendance_log.dart';
+import 'package:digit_data_model/models/entities/hf_referral.dart';
+import 'package:digit_dss/digit_dss.dart' as dss_mappers;
+import 'package:digit_ui_components/digit_components.dart';
+import 'package:digit_ui_components/theme/digit_extended_theme.dart';
+import 'package:digit_ui_components/utils/component_utils.dart';
+import 'package:digit_ui_components/widgets/atoms/pop_up_card.dart';
+import 'package:digit_ui_components/widgets/molecules/show_pop_up.dart';
+import 'package:disable_battery_optimization/disable_battery_optimization.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:isar/isar.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:reactive_forms/reactive_forms.dart';
+import 'package:survey_form/models/entities/service.dart';
+import 'package:survey_form/survey_form.init.dart' as survey_form_mappers;
+import 'package:sync_service/blocs/sync/sync.dart';
+import 'package:sync_service/data/sync_service.dart' show SyncLock;
+import 'package:transit_post/data/repositories/local/user_action.dart';
+import 'package:transit_post/data/repositories/remote/user_action.dart';
+
+import '../blocs/app_initialization/app_initialization.dart';
+import '../blocs/hf_referral_downsync/hf_referral_downsync.dart';
+import '../blocs/localization/app_localization.dart';
+import '../blocs/localization/localization.dart';
+import '../blocs/projects_beneficiary_downsync/project_beneficiaries_downsync.dart';
+import '../data/local_store/app_shared_preferences.dart';
+import '../data/local_store/no_sql/schema/app_configuration.dart';
+import '../data/local_store/no_sql/schema/localization.dart';
+import '../data/local_store/secure_store/secure_store.dart';
+import '../models/app_config/app_config_model.dart';
+import '../router/app_router.dart';
+import '../widgets/progress_indicator/progress_indicator.dart';
+import 'constants.dart';
+import 'environment_config.dart';
+import 'extensions/extensions.dart';
+import 'i18_key_constants.dart' as i18;
+
+export 'app_exception.dart';
+export 'constants.dart';
+export 'extensions/extensions.dart';
+
+class CustomValidator {
+  /// Validates that control's value must be `true`
+  static Map<String, dynamic>? requiredMin(
+    AbstractControl<dynamic> control,
+  ) {
+    return control.value == null ||
+            control.value.toString().length >= 2 ||
+            control.value.toString().trim().isEmpty
+        ? null
+        : {'required': true};
+  }
+
+  static Map<String, dynamic>? validMobileNumber(
+    AbstractControl<dynamic> control,
+  ) {
+    if (control.value == null || control.value.toString().isEmpty) {
+      return null;
+    }
+
+    const pattern = r'^[+]*[(]{0,1}[0-9]{1,4}[)]{0,1}[-\s\./0-9]*$';
+
+    if (RegExp(pattern).hasMatch(control.value.toString())) return null;
+
+    if (control.value.toString().length < 10) return {'mobileNumber': true};
+
+    return {'mobileNumber': true};
+  }
+}
+
+Future<void> requestDisableBatteryOptimization() async {
+  bool isIgnoringBatteryOptimizations =
+      await DisableBatteryOptimization.isBatteryOptimizationDisabled ?? false;
+
+  if (!isIgnoringBatteryOptimizations) {
+    await DisableBatteryOptimization.showDisableBatteryOptimizationSettings();
+  }
+}
+
+setBgRunning(bool isBgRunning) async {
+  final localSecureStore = LocalSecureStore.instance;
+  await localSecureStore.setBackgroundService(isBgRunning);
+}
+
+performBackgroundService({
+  BuildContext? context,
+  required bool stopService,
+  required bool isBackground,
+}) async {
+  final connectivityResult = await (Connectivity().checkConnectivity());
+
+  final isOnline = connectivityResult.contains(ConnectivityResult.wifi) ||
+      connectivityResult.contains(ConnectivityResult.mobile);
+  final service = FlutterBackgroundService();
+  var isRunning = await service.isRunning();
+
+  if (stopService) {
+    if (isRunning) {
+      if (!isBackground && context != null && context.mounted) {
+        if (context.mounted) {
+          Toast.showToast(
+            context,
+            message: 'Background Service Stopped',
+            type: ToastType.error,
+          );
+        }
+      }
+    }
+  } else {
+    if (!isRunning && isOnline) {
+      service.startService();
+      if (context != null && context.mounted) {
+        requestDisableBatteryOptimization();
+        Toast.showToast(
+          context,
+          message: 'Background Service Started',
+          type: ToastType.success,
+        );
+      }
+    } else if (context != null && context.mounted) {
+      debugPrint('Background service not started: isRunning=$isRunning, isOnline=$isOnline');
+    }
+  }
+}
+
+String maskString(String input) {
+  // Define the character to use for masking (e.g., "*")
+  const maskingChar = '*';
+
+  // Create a new string with the same length as the input string
+  final maskedString =
+      List<String>.generate(input.length, (index) => maskingChar).join();
+
+  return maskedString;
+}
+
+List<MdmsMasterDetailModel> getMasterDetailsModel(List<String> masterNames) {
+  return masterNames.map((e) => MdmsMasterDetailModel(e)).toList();
+}
+
+Timer makePeriodicTimer(
+  Duration duration,
+  void Function(Timer timer) callback, {
+  bool fireNow = false,
+}) {
+  var timer = Timer.periodic(duration, callback);
+  if (fireNow) {
+    callback(timer);
+  }
+
+  return timer;
+}
+
+final requestData = {
+  "data": [
+    {
+      "id": 1,
+      "name": "John Doe",
+      "age": 30,
+      "email": "johndoe@example.com",
+      "address": {
+        "street": "123 Main Street",
+        "city": "New York",
+        "state": "NY",
+        "zipcode": "10001",
+      },
+      "orders": [
+        {
+          "id": 101,
+          "product": "Widget A",
+          "quantity": 2,
+          "price": 10.99,
+        },
+        {
+          "id": 102,
+          "product": "Widget B",
+          "quantity": 1,
+          "price": 19.99,
+        },
+      ],
+    },
+    {
+      "id": 2,
+      "name": "Jane Smith",
+      "age": 25,
+      "email": "janesmith@example.com",
+      "address": {
+        "street": "456 Elm Street",
+        "city": "Los Angeles",
+        "state": "CA",
+        "zipcode": "90001",
+      },
+      "orders": [
+        {
+          "id": 201,
+          "product": "Widget C",
+          "quantity": 3,
+          "price": 15.99,
+        },
+        {
+          "id": 202,
+          "product": "Widget D",
+          "quantity": 2,
+          "price": 12.99,
+        },
+      ],
+    },
+    // ... Repeat the above structure to reach approximately 100KB in size
+  ],
+};
+
+Future<bool> getIsConnected() async {
+  try {
+    final result = await InternetAddress.lookup('example.com');
+    if (result.isNotEmpty && result[0].rawAddress.isNotEmpty) {
+      return true;
+    }
+
+    return false;
+  } on SocketException catch (_) {
+    return false;
+  }
+}
+
+void showDownloadDialog(
+  BuildContext context, {
+  required DownloadBeneficiary model,
+  required DigitProgressDialogType dialogType,
+  bool isPop = true,
+  StreamController<DownloadProgressData>? downloadProgressController,
+  DownloadProgressData? initialProgressData,
+}) {
+  if (isPop) {
+    Navigator.of(context, rootNavigator: true).pop();
+  }
+
+  switch (dialogType) {
+    case DigitProgressDialogType.failed:
+    case DigitProgressDialogType.checkFailed:
+      DigitSyncDialog.show(
+        context,
+        type: DialogType.failed,
+        label: model.title,
+        primaryAction: DigitDialogActions(
+          label: model.primaryButtonLabel ?? '',
+          action: (ctx) {
+            if (dialogType == DigitProgressDialogType.failed ||
+                dialogType == DigitProgressDialogType.checkFailed) {
+              Navigator.of(context, rootNavigator: true).pop();
+              context.read<BeneficiaryDownSyncBloc>().add(
+                    DownSyncGetBatchSizeEvent(
+                      appConfiguration: [model.appConfiguartion!],
+                      projectModel: model.projectModel,
+                      boundaries: model.boundaries,
+                      pendingSyncCount: model.pendingSyncCount ?? 0,
+                    ),
+                  );
+            } else {
+              Navigator.of(context, rootNavigator: true).pop();
+              context.router.replaceAll([HomeRoute()]);
+            }
+          },
+        ),
+        secondaryAction: DigitDialogActions(
+          label: model.secondaryButtonLabel ?? '',
+          action: (ctx) {
+            Navigator.of(context, rootNavigator: true).pop();
+            context.router.replaceAll([HomeRoute()]);
+          },
+        ),
+      );
+    case DigitProgressDialogType.dataFound:
+    case DigitProgressDialogType.pendingSync:
+    case DigitProgressDialogType.insufficientStorage:
+      showCustomPopup(
+        barrierDismissible: false,
+        context: context,
+        builder: (ctx) => Popup(
+          title: model.title,
+          titleIcon: Icon(
+            dialogType == DigitProgressDialogType.insufficientStorage
+                ? Icons.warning
+                : Icons.info_outline_rounded,
+            color: dialogType == DigitProgressDialogType.insufficientStorage
+                ? Theme.of(context).colorTheme.alert.error
+                : Theme.of(context).colorTheme.text.primary,
+          ),
+          description: model.content,
+          actions: [
+            DigitButton(
+                label: model.primaryButtonLabel ?? '',
+                onPressed: () {
+                  if (dialogType == DigitProgressDialogType.pendingSync) {
+                    Navigator.of(context, rootNavigator: true).pop();
+                    context.router.replaceAll([HomeRoute()]);
+                  } else {
+                    if ((model.totalCount ?? 0) > 0) {
+                      context.read<BeneficiaryDownSyncBloc>().add(
+                            DownSyncDownloadAllEvent(
+                              projectModel: model.projectModel,
+                              boundaries: model.boundaries,
+                              batchSize: model.batchSize ?? 1,
+                              boundaryCounts: model.boundaryCounts,
+                            ),
+                          );
+                    } else {
+                      Navigator.of(context, rootNavigator: true).pop();
+                      context.read<BeneficiaryDownSyncBloc>().add(
+                            const DownSyncResetStateEvent(),
+                          );
+                    }
+                  }
+                },
+                type: DigitButtonType.primary,
+                size: DigitButtonSize.medium),
+            if (model.secondaryButtonLabel != null)
+              DigitButton(
+                  label: model.secondaryButtonLabel ?? '',
+                  onPressed: () async {
+                    await LocalSecureStore.instance.setManualSyncTrigger(false);
+                    if (context.mounted) {
+                      Navigator.of(context, rootNavigator: true).pop();
+                      context.router.replaceAll([HomeRoute()]);
+                    }
+                  },
+                  type: DigitButtonType.secondary,
+                  size: DigitButtonSize.medium),
+          ],
+        ),
+      );
+    case DigitProgressDialogType.inProgress:
+      showCustomPopup(
+        barrierDismissible: false,
+        context: context,
+        builder: (ctx) => Popup(title: "", additionalWidgets: [
+          StreamBuilder<DownloadProgressData>(
+            stream: downloadProgressController?.stream,
+            initialData: initialProgressData,
+            builder: (context, snapshot) {
+              final data = snapshot.data;
+              final progress = data?.progress ?? 0;
+              final totalCount = data?.totalCount ?? model.totalCount ?? 0;
+              final syncedCount = data?.syncedCount ?? 0;
+              final boundaryName = data?.boundaryName ?? '';
+              final currentIndex = data?.currentIndex ?? 0;
+              final totalBoundaries = data?.totalBoundaries ?? 1;
+
+              return ProgressIndicatorContainer(
+                label: boundaryName.isNotEmpty
+                    ? '$boundaryName (${currentIndex + 1}/$totalBoundaries)'
+                    : '',
+                prefixLabel: '$syncedCount',
+                suffixLabel: '$totalCount',
+                value: progress,
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  Theme.of(context).colorTheme.primary.primary1,
+                ),
+                subLabel: model.title,
+              );
+            },
+          ),
+        ]),
+      );
+    default:
+      return;
+  }
+}
+
+void showHFReferralProgressDialog(
+  BuildContext context, {
+  required String title,
+  required StreamController<HFReferralProgressData> progressController,
+  required HFReferralProgressData initialData,
+}) {
+  Navigator.of(context, rootNavigator: true)
+      .popUntil((route) => route is! PopupRoute);
+
+  showCustomPopup(
+    barrierDismissible: false,
+    context: context,
+    builder: (ctx) => Popup(title: "", additionalWidgets: [
+      StreamBuilder<HFReferralProgressData>(
+        stream: progressController.stream,
+        initialData: initialData,
+        builder: (context, snapshot) {
+          final data = snapshot.data;
+          final progress = data?.progress ?? 0;
+          final totalCount = data?.totalCount ?? 0;
+          final syncedCount = data?.syncedCount ?? 0;
+
+          return ProgressIndicatorContainer(
+            label: '',
+            prefixLabel: '$syncedCount',
+            suffixLabel: '$totalCount',
+            value: progress,
+            valueColor: AlwaysStoppedAnimation<Color>(
+              Theme.of(context).colorTheme.primary.primary1,
+            ),
+            subLabel: title,
+          );
+        },
+      ),
+    ]),
+  );
+}
+
+class HFReferralProgressData {
+  final double progress;
+  final int syncedCount;
+  final int totalCount;
+
+  const HFReferralProgressData({
+    required this.progress,
+    required this.syncedCount,
+    required this.totalCount,
+  });
+}
+
+// Existing _findLeastLevelBoundaryCode method remains unchanged
+String _findLeastLevelBoundaryCode(List<BoundaryModel> boundaries) {
+  BoundaryModel? highestBoundary;
+
+  // Find the boundary with the highest boundaryNum
+  for (var boundary in boundaries) {
+    if (highestBoundary == null ||
+        (boundary.boundaryNum ?? 0) > (highestBoundary.boundaryNum ?? 0)) {
+      highestBoundary = boundary;
+    }
+  }
+
+  // If the highest boundary is a leaf node (no children), it is the least-level boundary
+  if (highestBoundary?.children.isEmpty ?? true) {
+    // Return the boundary type if available, otherwise fallback to the label or an empty string
+    return highestBoundary?.boundaryType ?? highestBoundary?.label ?? "";
+  }
+
+  // If the highest boundary has children, recursively search in them
+  if (highestBoundary?.children != null) {
+    for (var child in highestBoundary!.children) {
+      String leastCode = _findLeastLevelBoundaryCode(
+          [child]); // Recursively find the least level
+      if (leastCode.isNotEmpty) {
+        return leastCode;
+      }
+    }
+  }
+
+  // If no boundary found
+  return "";
+}
+
+// Recursive function to find the least level boundary codes
+List<String> findLeastLevelBoundaries(List<BoundaryModel> boundaries) {
+  // Find the least level boundary type
+  String leastLevelType = _findLeastLevelBoundaryCode(boundaries);
+
+  // Initialize a list to store the matching boundary codes with lowest level boundary type
+  List<String> leastLevelBoundaryCodes = [];
+
+  // Iterate through the boundaries to find matching codes
+  if (leastLevelType.isNotEmpty) {
+    for (var boundary in boundaries) {
+      // Check if the boundary matches the least-level type and has no children (leaf node)
+      if ((boundary.boundaryType == leastLevelType ||
+              boundary.label == leastLevelType) &&
+          boundary.children.isEmpty) {
+        // Found a least level boundary with no children (leaf node), add its code
+        leastLevelBoundaryCodes.add(boundary.code!);
+      } else if (boundary.children.isNotEmpty) {
+        // Recursively search in the children
+        List<String> childVillageCodes =
+            findLeastLevelBoundaries(boundary.children);
+        leastLevelBoundaryCodes.addAll(childVillageCodes);
+      }
+    }
+  }
+
+  // Return the list of matching boundary codes
+  return leastLevelBoundaryCodes;
+}
+
+//Function to read the localizations from ISAR,
+getLocalizationString(Isar isar, String selectedLocale) async {
+  List<dynamic> localizationValues = [];
+
+  final List<LocalizationWrapper> localizationList =
+      await isar.localizationWrappers
+          .filter()
+          .localeEqualTo(
+            selectedLocale.toString(),
+          )
+          .findAll();
+  if (localizationList.isNotEmpty) {
+    localizationValues.addAll(localizationList.first.localization!);
+  }
+
+  return localizationValues;
+}
+
+List<dss_mappers.DashboardConfigSchema?> filterDashboardConfig(
+    List<dss_mappers.DashboardConfigSchema?>? dashboardConfig,
+    String projectTypeCode) {
+  return dashboardConfig
+          ?.where((element) =>
+              element != null && element.projectTypeCode == projectTypeCode)
+          .toList() ??
+      [];
+}
+
+getSelectedLanguage(AppInitialized state, int index) {
+  if (AppSharedPreferences().getSelectedLocale == null) {
+    AppSharedPreferences()
+        .setSelectedLocale(state.appConfiguration.languages!.last.value);
+  }
+  final selectedLanguage = AppSharedPreferences().getSelectedLocale;
+  final isSelected =
+      state.appConfiguration.languages![index].value == selectedLanguage;
+
+  return isSelected;
+}
+
+initializeAllMappers() async {
+  List<Future> initializations = [
+    Future(() => data_model_mappers.initializeMappers()),
+    // Future(() => attendance_mappers.initializeMappers()),
+    Future(() => data_model_mappers.initializeMappers()),
+    Future(() => dss_mappers.initializeMappers()),
+    Future(() => survey_form_mappers.initializeMappers())
+  ];
+  await Future.wait(initializations);
+}
+
+void attemptSyncUp(BuildContext context) async {
+  // Check for internet connectivity first
+  final connectivityResult = await Connectivity().checkConnectivity();
+  final isOnline = connectivityResult.contains(ConnectivityResult.wifi) ||
+      connectivityResult.contains(ConnectivityResult.mobile);
+
+  if (!isOnline) {
+    if (context.mounted) {
+      showCustomPopup(
+        context: context,
+        builder: (ctx) => Popup(
+          title: AppLocalizations.of(context).translate(
+            i18.common.connectionLabel,
+          ),
+          description: AppLocalizations.of(context).translate(
+            i18.common.connectionContent,
+          ),
+          actions: [
+            DigitButton(
+              label: AppLocalizations.of(context).translate(
+                i18.common.coreCommonOk,
+              ),
+              onPressed: () => Navigator.of(context, rootNavigator: true).pop(),
+              type: DigitButtonType.primary,
+              size: DigitButtonSize.large,
+            ),
+          ],
+        ),
+      );
+    }
+    return;
+  }
+
+  if (await SyncLock.isLocked()) {
+    if (context.mounted) {
+      Toast.showToast(
+        context,
+        message: AppLocalizations.of(context).translate(
+          i18.common.coreCommonSyncInProgress,
+        ),
+        type: ToastType.success,
+      );
+    }
+    return;
+  }
+
+  if (context.mounted) {
+    context.read<SyncBloc>().add(
+          SyncSyncUpEvent(
+            userId: context.loggedInUserUuid,
+            localRepositories: [
+              // INFO : Need to add local repo of package Here
+              context.read<
+                  LocalRepository<IndividualModel, IndividualSearchModel>>(),
+              context.read<
+                  LocalRepository<HouseholdModel, HouseholdSearchModel>>(),
+              context.read<
+                  LocalRepository<ProjectBeneficiaryModel,
+                      ProjectBeneficiarySearchModel>>(),
+              context.read<
+                  LocalRepository<HouseholdMemberModel,
+                      HouseholdMemberSearchModel>>(),
+              context.read<LocalRepository<TaskModel, TaskSearchModel>>(),
+              context.read<
+                  LocalRepository<SideEffectModel, SideEffectSearchModel>>(),
+              context
+                  .read<LocalRepository<ReferralModel, ReferralSearchModel>>(),
+              context.read<LocalRepository<ServiceModel, ServiceSearchModel>>(),
+              context.read<LocalRepository<StockModel, StockSearchModel>>(),
+              context.read<
+                  LocalRepository<StockReconciliationModel,
+                      StockReconciliationSearchModel>>(),
+              context.read<
+                  LocalRepository<PgrServiceModel, PgrServiceSearchModel>>(),
+              context.read<
+                  LocalRepository<HFReferralModel, HFReferralSearchModel>>(),
+              context.read<
+                  LocalRepository<AttendanceLogModel,
+                      AttendanceLogSearchModel>>(),
+              context.read<UserActionLocalRepository>(),
+            ],
+            remoteRepositories: [
+              // INFO : Need to add repo repo of package Here
+              context.read<
+                  RemoteRepository<IndividualModel, IndividualSearchModel>>(),
+              context.read<
+                  RemoteRepository<HouseholdModel, HouseholdSearchModel>>(),
+              context.read<
+                  RemoteRepository<ProjectBeneficiaryModel,
+                      ProjectBeneficiarySearchModel>>(),
+              context.read<
+                  RemoteRepository<HouseholdMemberModel,
+                      HouseholdMemberSearchModel>>(),
+              context.read<RemoteRepository<TaskModel, TaskSearchModel>>(),
+              context.read<
+                  RemoteRepository<SideEffectModel, SideEffectSearchModel>>(),
+              context
+                  .read<RemoteRepository<ReferralModel, ReferralSearchModel>>(),
+              context
+                  .read<RemoteRepository<ServiceModel, ServiceSearchModel>>(),
+              context.read<RemoteRepository<StockModel, StockSearchModel>>(),
+              context.read<
+                  RemoteRepository<StockReconciliationModel,
+                      StockReconciliationSearchModel>>(),
+              context.read<
+                  RemoteRepository<PgrServiceModel, PgrServiceSearchModel>>(),
+              context.read<
+                  RemoteRepository<HFReferralModel, HFReferralSearchModel>>(),
+              context.read<
+                  RemoteRepository<AttendanceLogModel,
+                      AttendanceLogSearchModel>>(),
+              context.read<UserActionRemoteRepository>(),
+            ],
+          ),
+        );
+  }
+}
+
+Future<File> getDownSyncFilePath() async {
+  final downloadsDirectory = await getDownloadsDirectory();
+  final file = File('${downloadsDirectory!.path}/down_sync_data.json');
+
+  return file;
+}
+
+class LocalizationParams {
+  static final LocalizationParams _singleton = LocalizationParams._internal();
+
+  factory LocalizationParams() {
+    return _singleton;
+  }
+
+  LocalizationParams._internal();
+
+  List<String>? _code;
+  String? _module;
+  Locale? _locale;
+  bool? _exclude = true;
+
+  void setCode(List<String>? code) {
+    _code = code;
+  }
+
+  void setModule(String? module, bool? exclude) {
+    _module = module;
+    _exclude = exclude;
+  }
+
+  void setLocale(Locale locale) {
+    _locale = locale;
+  }
+
+  void clear() {
+    _code = null;
+    _module = null;
+  }
+
+  List<String>? get code => _code;
+
+  String? get module => _module;
+
+  Locale? get locale => _locale;
+
+  bool? get exclude => _exclude;
+}
+
+// Transforms the input JSON into a new structure where each page's properties
+// are keyed by their fieldName and the main structure is flattened for use.
+Map<String, dynamic> transformJson(Map<String, dynamic> inputJson) {
+  try {
+    final transformed = <String, dynamic>{
+      'name': inputJson['name'],
+      'version': inputJson['version'],
+      'pages': <String, dynamic>{},
+      'summary': inputJson['summary'],
+      'summaryDetails': inputJson['summaryDetails'],
+      'showAlertPopUp': inputJson['showAlertPopUp'],
+      'templates': <String, dynamic>{},
+    };
+
+    for (final page in inputJson['pages'] as List<dynamic>) {
+      final pageMap = page as Map<String, dynamic>;
+      final pageKey = pageMap['page'];
+      final type = pageMap['type'];
+
+      final Map<String, dynamic> properties = {};
+
+      for (final prop in pageMap['properties'] as List<dynamic>) {
+        final property = prop as Map<String, dynamic>;
+        final fieldName = property['fieldName'];
+        if (fieldName != null) {
+          properties[fieldName] = Map<String, dynamic>.from(property);
+        }
+      }
+
+      final transformedPage = <String, dynamic>{
+        'label': pageMap['label'],
+        'order': pageMap['order'],
+        'type': pageMap['type'],
+        'format': pageMap['format'],
+        'description': pageMap['description'],
+        'actionLabel': pageMap['actionLabel'],
+        'properties': properties,
+        'value': pageMap['value'],
+        'required': pageMap['required'],
+        'hidden': pageMap['hidden'],
+        'helpText': pageMap['helpText'],
+        'innerLabel': pageMap['innerLabel'],
+        'validations': pageMap['validations'],
+        'tooltip': pageMap['tooltip'],
+        'startDate': pageMap['startDate'],
+        'endDate': pageMap['endDate'],
+        'readOnly': pageMap['readOnly'],
+        'charCount': pageMap['charCount'],
+        'systemDate': pageMap['systemDate'],
+        'isMultiSelect': pageMap['isMultiSelect'],
+        'includeInForm': pageMap['includeInForm'],
+        'includeInSummary': pageMap['includeInSummary'],
+        'autoEnable': pageMap['autoEnable'],
+        'prefixText': pageMap['prefixText'],
+        'suffixText': pageMap['suffixText'],
+        'navigateTo': pageMap['navigateTo'] is Map<String, dynamic>
+            ? pageMap['navigateTo']
+            : null,
+        'visibilityCondition': pageMap['visibilityCondition'],
+        'conditionalNavigateTo': pageMap['conditionalNavigateTo']
+      };
+
+      if (type == 'template') {
+        (transformed['templates'] as Map<String, dynamic>)[pageKey] =
+            transformedPage;
+      } else {
+        (transformed['pages'] as Map<String, dynamic>)[pageKey] =
+            transformedPage;
+      }
+    }
+
+    return transformed;
+  } catch (e, stackTrace) {
+    // Log and rethrow to propagate error to the outer try-catch
+    debugPrint('Error inside transformJson: $e');
+    debugPrint('$stackTrace');
+    rethrow;
+  }
+}
+
+Future<void> triggerLocalizationIfUpdated({
+  required BuildContext context,
+  required String moduleKey, // e.g., 'REGISTRATIONFLOW,DELIVERYFLOW'
+  required String projectReferenceId,
+  required String locale,
+}) async {
+  final keys = moduleKey.split(',').map((e) => e.trim()).toList();
+
+  final moduleNames = keys
+      .map((key) => 'hcm-${key.toLowerCase()}-$projectReferenceId')
+      .toList();
+
+  final fullModuleString = moduleNames.join(',');
+
+  context
+      .read<LocalizationBloc>()
+      .add(LocalizationEvent.onRemoteLoadLocalization(
+        module: fullModuleString,
+        tenantId: envConfig.variables.tenantId,
+        locale: AppSharedPreferences().getSelectedLocale!,
+        path: Constants.localizationApiPath,
+      ));
+}
+
+Future<Set<String>> generateUniqueMaterialNoteNumber({
+  required String loggedInUserId,
+  required bool returnCombinedIds,
+}) async {
+  DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
+  AndroidDeviceInfo androidInfo = await deviceInfo.androidInfo;
+
+  String androidId = androidInfo.serialNumber == 'unknown'
+      ? androidInfo.id.replaceAll('.', '')
+      : androidInfo.serialNumber;
+
+  int timestamp = DateTime.now().millisecondsSinceEpoch;
+
+  String combinedId = '$loggedInUserId$androidId$timestamp';
+
+  // Generate SHA-256 hash
+  List<int> bytes = utf8.encode(combinedId);
+  Digest sha256Hash = sha256.convert(bytes);
+
+  // Convert the hash to a 12-character string and make it uppercase
+  String hashString = sha256Hash.toString();
+  String uniqueId = hashString.substring(0, 12).toUpperCase();
+
+  // Add a hyphen every 4 characters
+  String formattedUniqueId = uniqueId.replaceAllMapped(
+    RegExp(r'.{1,4}'),
+    (match) => '${match.group(0)}-',
+  );
+
+  // Remove the last hyphen
+  formattedUniqueId =
+      formattedUniqueId.substring(0, formattedUniqueId.length - 1);
+
+  if (kDebugMode) {
+    print('uniqueId : $formattedUniqueId');
+  }
+
+  return returnCombinedIds
+      ? {formattedUniqueId, combinedId}
+      : {formattedUniqueId};
+}

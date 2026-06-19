@@ -1,0 +1,91 @@
+name: fw-app
+repository: https://github.com/egovernments/health-campaign-field-worker-app
+
+packages:
+  - packages/*
+  - apps/*
+  - mason_templates/digit_entity/hooks
+  - mason_templates/freezed_bloc/hooks
+
+command:
+  bootstrap:
+    usePubspecOverrides: true
+    hooks:
+      post: melos generate
+
+scripts:
+  generate:
+    description: Generate code for all packages (Flutter and Dart).
+    run: |
+      melos run generate-flutter --no-select &
+    exec:
+      concurrency: 2
+
+  generate-flutter:
+    description: Generate code for all Flutter packages.
+    run: flutter packages run build_runner build --delete-conflicting-outputs
+    exec:
+      concurrency: 1
+    packageFilters:
+      flutter: true
+      dependsOn:
+        - build_runner
+
+  generate-hooks:
+    description: Generate hooks for all packages.
+    run: dart run build_runner build --delete-conflicting-outputs
+    exec:
+      concurrency: 1
+    packageFilters:
+      dependsOn:
+        - build_runner
+        - mason
+
+  watch:
+    description: Watch for changes and generate code.
+    run: dart run build_runner watch
+    exec:
+      concurrency: 1
+    packageFilters:
+      dependsOn:
+        - build_runner
+
+  analyze:
+    description: Run `dart analyze` in all packages.
+    run: flutter analyze . --no-fatal-infos --no-fatal-warnings
+    exec:
+      concurrency: 1
+
+  test:
+    description: Run Flutter tests for a specific package in this project.
+    run: flutter test --no-pub --coverage
+    exec:
+      concurrency: 1
+    packageFilters:
+      flutter: true
+      dirExists: test
+
+  all-test:
+    description: Run all Flutter tests in this project.
+    run: melos run test --no-select
+    exec:
+      concurrency: 2
+    packageFilters:
+      flutter: true
+      dirExists: test
+
+  upgrade-dependencies:
+    description: Upgrade all dependencies to their latest major versions.
+    run: flutter pub upgrade --major-versions
+    exec:
+      concurrency: 1
+    packageFilters:
+      flutter: true
+
+  dart-fix:
+    description: Run `dart fix` in all packages.
+    run: dart fix --apply
+    exec:
+      concurrency: 1
+    packageFilters:
+      dart: true
