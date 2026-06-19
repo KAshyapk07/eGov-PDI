@@ -24,7 +24,6 @@ AI and GIS-enabled grievance intelligence system that converts citizen complaint
 │
 ├── flutter/                # Health Campaign Field Worker App - Flutter mobile application
 │                           # (Offline-first mobile app used by field workers)
-│                           # (Branch: merge-attendance-stock-registration)
 │
 ├── PES-U/                  # PES University Project Artifacts & Code
 │   ├── docs/               # Shared architecture docs, task plans, presentations

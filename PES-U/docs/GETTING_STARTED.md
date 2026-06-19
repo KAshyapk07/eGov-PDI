@@ -19,9 +19,8 @@ This guide helps you set up the development environment and run the DIGIT HCM ap
 
 ```bash
 # Clone the repo
-git clone https://github.com/egovernments/DIGIT-Frontend.git
-cd DIGIT-Frontend
-git checkout PES-U/project-setup
+git clone https://github.com/egovernments/PES-U.git
+cd PES-U
 ```
 
 ## Running the React Web Application
