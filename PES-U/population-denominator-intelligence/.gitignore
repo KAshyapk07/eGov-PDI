@@ -1,0 +1,21 @@
+docs
+
+# Large data- WorldPop rasters + Google Open Buildings.
+Data_Source/
+
+# Python environment
+.venv/
+**/.venv/
+__pycache__/
+*.pyc
+.env
+
+# Node / build artifacts
+node_modules/
+dist/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
