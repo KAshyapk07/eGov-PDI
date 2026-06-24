@@ -9,6 +9,7 @@ Data_Source/
 __pycache__/
 *.pyc
 .env
+.pytest_cache/
 
 # Local Flyway CLI config
 db/flyway.conf

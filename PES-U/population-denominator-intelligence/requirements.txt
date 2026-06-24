@@ -18,3 +18,6 @@ geoalchemy2
 
 # Config
 python-dotenv
+
+# Testing
+pytest
