@@ -18,7 +18,8 @@ WORLDPOP_ISO = "tcd"
 BOUNDARY_GEOJSON = (
     DATA_SOURCE / "OSM-boundry" / "Final_N'Djamena Arroddissment with boundry code.geojson"
 )
-BUILDINGS_CSV = DATA_SOURCE / "Chad" / "Google Open Buildings" / "111_buildings.csv"
+# VIDA combined Open Buildings (Google v3 + Microsoft + OSM), country-wide GeoParquet.
+BUILDINGS_PARQUET = DATA_SOURCE / "Chad" / "Google Open Buildings" / "TCD.parquet"
 BOUNDARY_CODE_FIELD = "Boundary_code"
 
 AVG_HOUSEHOLD_SIZE = 5.4
@@ -27,7 +28,7 @@ COUNTRY = "TCD"
 CAMPAIGN_ID = "POLIO_CHAD_2024"
 TENANT_ID = "default"
 WORLDPOP_VERSION = "2026-CN-100m-R2025A"
-OPEN_BUILDINGS_VERSION = "v3"
+OPEN_BUILDINGS_SOURCE = "vida-google-microsoft-osm"
 
 # Optional sanity check: bbox + known control totals (set either to None to skip).
 SANITY_BBOX = (14.98, 12.06, 15.13, 12.21)

@@ -8,18 +8,11 @@ the MANIFEST reference figures when executed.
 
 import sys
 
-import geopandas as gpd
 from rasterstats import zonal_stats
 from shapely.geometry import box
 
 import config
-
-
-def load_boundaries():
-    boundaries = gpd.read_file(config.BOUNDARY_GEOJSON)
-    boundaries = boundaries[boundaries.geometry.geom_type.isin(["Polygon", "MultiPolygon"])]
-    boundaries = boundaries.to_crs(config.STORAGE_CRS)
-    return boundaries.reset_index(drop=True)
+from sources.boundaries import load_boundaries
 
 
 def _band_raster(token):
