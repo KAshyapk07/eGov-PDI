@@ -18,6 +18,12 @@ WORLDPOP_ISO = "tcd"
 BOUNDARY_GEOJSON = (
     DATA_SOURCE / "OSM-boundry" / "Final_N'Djamena Arroddissment with boundry code.geojson"
 )
+# National ITN microplan boundary hierarchy (province -> district -> health centre -> SPP/SFD
+# -> village), keyed by Boundary Code. Names only; no geometry or target populations.
+ITN_BOUNDARY_XLSX = (
+    DATA_SOURCE / "Synthetic data" / "itn_microplan" / "Chad_ITN_Boundary_Data_EN.xlsx"
+)
+ITN_BOUNDARY_SHEET = "Boundary Data"
 # VIDA combined Open Buildings (Google v3 + Microsoft + OSM), country-wide GeoParquet.
 BUILDINGS_PARQUET = DATA_SOURCE / "Chad" / "VIDA" / "TCD.parquet"
 BOUNDARY_CODE_FIELD = "Boundary_code"
