@@ -19,7 +19,7 @@ BOUNDARY_GEOJSON = (
     DATA_SOURCE / "OSM-boundry" / "Final_N'Djamena Arroddissment with boundry code.geojson"
 )
 # VIDA combined Open Buildings (Google v3 + Microsoft + OSM), country-wide GeoParquet.
-BUILDINGS_PARQUET = DATA_SOURCE / "Chad" / "Google Open Buildings" / "TCD.parquet"
+BUILDINGS_PARQUET = DATA_SOURCE / "Chad" / "VIDA" / "TCD.parquet"
 BOUNDARY_CODE_FIELD = "Boundary_code"
 
 AVG_HOUSEHOLD_SIZE = 5.4

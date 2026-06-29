@@ -1,8 +1,12 @@
 docs
 
-# Large data- WorldPop rasters + Google Open Buildings.
-Data_Source/
 
+
+Data_Source/Chad/Worldpop/*.tif
+Data_Source/Chad/Worldpop/Worlpop_age_and_sex/*.tif
+Data_Source/Chad/VIDA/*.parquet
+Data_Source/Synthetic data
+Data_Source/OSM-boundry/
 # Python environment
 .venv/
 **/.venv/
