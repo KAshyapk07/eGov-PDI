@@ -1,12 +1,12 @@
 docs
 
-
-
 Data_Source/Chad/Worldpop/*.tif
 Data_Source/Chad/Worldpop/Worlpop_age_and_sex/*.tif
 Data_Source/Chad/VIDA/*.parquet
 Data_Source/Synthetic data
 Data_Source/OSM-boundry/
+
+pdi-boundary/output
 # Python environment
 .venv/
 **/.venv/

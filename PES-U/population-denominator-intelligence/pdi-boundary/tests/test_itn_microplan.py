@@ -1,12 +1,12 @@
 import numpy as np
 import pandas as pd
 
-from sources import itn_boundaries
+from sources import itn_microplan
 
 
 def _raw(rows):
     """A raw frame in the workbook's column order: path names, then code and label."""
-    return pd.DataFrame(rows, columns=itn_boundaries._RAW_COLUMNS)
+    return pd.DataFrame(rows, columns=itn_microplan._RAW_COLUMNS)
 
 
 def test_normalize_resolves_levels_and_parents():
@@ -18,7 +18,7 @@ def test_normalize_resolves_levels_and_parents():
         ["Tchad", "OUADDAI", "MARFA", "RIMELE", "TARA", None, "ADMIN_TC_16_11_07_05_TARA", "TARA"],
     ])
 
-    out = itn_boundaries.normalize(raw).set_index("boundary_code")
+    out = itn_microplan.normalize(raw).set_index("boundary_code")
 
     assert pd.isna(out.loc["ADMIN_TC", "parent_code"])
     assert out.loc["ADMIN_TC", "level"] == "country"
@@ -37,7 +37,7 @@ def test_normalize_skips_missing_intermediate_level():
         ["Tchad", "P", "D", "HC", None, "VLG", "ADMIN_TC_P_D_HC_VLG", "VLG"],
     ])
 
-    out = itn_boundaries.normalize(raw).set_index("boundary_code")
+    out = itn_microplan.normalize(raw).set_index("boundary_code")
 
     assert out.loc["ADMIN_TC_P_D_HC_VLG", "level"] == "village"
     assert out.loc["ADMIN_TC_P_D_HC_VLG", "parent_code"] == "ADMIN_TC_P_D_HC"
@@ -49,7 +49,7 @@ def test_normalize_drops_rows_without_a_code_and_fills_blank_label():
         ["Tchad", "P", "D", None, None, None, None, "D"],
     ])
 
-    out = itn_boundaries.normalize(raw)
+    out = itn_microplan.normalize(raw)
 
     assert list(out["boundary_code"]) == ["ADMIN_TC_P"]
     assert out.loc[0, "name"] == "P"

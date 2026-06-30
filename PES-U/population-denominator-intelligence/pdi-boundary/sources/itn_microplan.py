@@ -1,14 +1,9 @@
-"""Flattens the ITN microplan workbook into a (boundary_code, name, level, parent_code) table.
-
-Parent links are resolved from the nesting of the populated columns, not the Boundary Code text,
-since a parent's code is not a prefix of its children's.
-"""
+"""Flattens the ITN microplan workbook into a (boundary_code, name, level, parent_code) table."""
 
 import pandas as pd
 
 import config
 
-# Source columns in order, deepest populated one fixing a row's level.
 PATH_COLUMNS = ["country", "province", "district", "health_centre", "spp_sfd", "village"]
 _RAW_COLUMNS = PATH_COLUMNS + ["boundary_code", "name"]
 
@@ -65,6 +60,20 @@ def load_itn_boundaries(path=None, sheet=None):
     frame = pd.read_excel(path or config.ITN_BOUNDARY_XLSX,
                           sheet_name=sheet or config.ITN_BOUNDARY_SHEET)
     return normalize(frame)
+
+
+def district_roster(path=None, sheet=None):
+    """The microplan's districts only: (microplan_code, microplan_district, microplan_province)."""
+    boundaries = load_itn_boundaries(path, sheet)
+    districts = boundaries[boundaries["level"] == "district"].copy()
+    districts = districts[["boundary_code", "name", "province"]].rename(
+        columns={
+            "boundary_code": "microplan_code",
+            "name": "microplan_district",
+            "province": "microplan_province",
+        }
+    )
+    return districts.reset_index(drop=True)
 
 
 def main():
