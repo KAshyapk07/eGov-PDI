@@ -135,6 +135,7 @@ CREATE TABLE project_beneficiary (
     beneficiary_client_reference_id UUID NOT NULL,
     date_of_registration TIMESTAMP,
     tag VARCHAR(256),
+    additional_fields JSONB DEFAULT '{}',
     row_version INTEGER DEFAULT 1,
     created_by VARCHAR(128) DEFAULT 'synthetic-gen',
     created_time TIMESTAMP,
@@ -154,3 +155,5 @@ CREATE INDEX idx_hm_ind ON household_member(individual_client_reference_id);
 CREATE INDEX idx_pb_benef ON project_beneficiary(beneficiary_client_reference_id);
 CREATE INDEX idx_pb_project ON project_beneficiary(project_id);
 CREATE INDEX idx_ind_addr_loc ON individual_address(locality_code);
+
+CREATE INDEX idx_pb_cycle ON project_beneficiary((additional_fields->>'cycle'));
