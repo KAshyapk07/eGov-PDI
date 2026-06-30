@@ -1,22 +1,15 @@
-"""
-Central configuration for the PDI batch pre-computation layer.
-
-"""
+# Central configuration for the PDI batch pre-computation layer.
 
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DATA_SOURCE = REPO_ROOT / "Data_Source"
 
-# Location profile: edit these per country / campaign.
-
 WORLDPOP_DIR = DATA_SOURCE / "Chad" / "Worldpop"
 WORLDPOP_TOTAL_RASTER = WORLDPOP_DIR / "WorldPop_CHAD.tif"
 WORLDPOP_AGESEX_DIR = WORLDPOP_DIR / "Worlpop_age_and_sex"
 WORLDPOP_ISO = "tcd"
 
-# Common national boundary produced by ../pdi-boundary: microplan districts matched to MSP
-# health-district polygons. The engine computes population over these polygons.
 BOUNDARY_GEOJSON = REPO_ROOT / "pdi-boundary" / "output" / "chad_districts_common.geojson"
 # VIDA combined Open Buildings (Google v3 + Microsoft + OSM), country-wide GeoParquet.
 BUILDINGS_PARQUET = DATA_SOURCE / "Chad" / "VIDA" / "TCD.parquet"
@@ -65,9 +58,16 @@ TARGET_GROUPS = {
         "t_40", "t_45", "t_50", "t_55", "t_60",
     ],
     "elderly_65_plus": ["t_65", "t_70", "t_75", "t_80", "t_85", "t_90"],
-    "women_15_49": ["f_15", "f_20", "f_25", "f_30", "f_35", "f_40", "f_45"],
     "female_all": ["T_F"],
     "male_all": ["T_M"],
+    "women_15_49": ["f_15", "f_20", "f_25", "f_30", "f_35", "f_40", "f_45"],
+    "men_15_49": ["m_15", "m_20", "m_25", "m_30", "m_35", "m_40", "m_45"],
+    "female_under5": ["f_00", "f_01"],
+    "male_under5": ["m_00", "m_01"],
+    "female_under15": ["f_00", "f_01", "f_05", "f_10"],
+    "male_under15": ["m_00", "m_01", "m_05", "m_10"],
+    "female_under30": ["f_00", "f_01", "f_05", "f_10", "f_15", "f_20", "f_25"],
+    "male_under30": ["m_00", "m_01", "m_05", "m_10", "m_15", "m_20", "m_25"],
 }
 
 STORAGE_CRS = "EPSG:4326"
@@ -87,3 +87,8 @@ GAP_YELLOW_THRESHOLD = 0.50
 RISK_MISSING_FACTOR_DEFAULT = 0.5
 
 SANITY_TOLERANCE = 0.02
+
+OUTPUT_DIR = REPO_ROOT / "pdi-batch" / "output"
+ESTIMATION_OUTPUT_DIR = OUTPUT_DIR / "estimation"
+DISTRICT_POPULATION_CSV = ESTIMATION_OUTPUT_DIR / "district_population.csv"
+DISTRICT_POPULATION_GEOJSON = ESTIMATION_OUTPUT_DIR / "district_population.geojson"
