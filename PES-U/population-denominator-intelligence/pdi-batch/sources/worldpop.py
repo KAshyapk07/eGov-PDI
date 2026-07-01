@@ -1,12 +1,21 @@
 """WorldPop zonal statistics computed directly from the GeoTIFFs """
 
+import math
 import sys
 
+import numpy as np
+import rasterio
+from rasterio.features import rasterize
+from rasterio.transform import from_bounds as transform_from_bounds
+from rasterio.windows import Window, bounds as window_bounds, from_bounds
 from rasterstats import zonal_stats
 from shapely.geometry import box
 
 import config
 from sources.boundaries import load_boundaries
+
+# Sub-pixel supersampling factor for coverage-weighted extraction 
+COVERAGE_SUBSAMPLE = 10
 
 
 def _band_raster(token):
@@ -18,9 +27,34 @@ def _band_raster(token):
     return matches[0]
 
 
-def _zonal_sums(geometries, raster_path):
-    stats = zonal_stats(list(geometries), str(raster_path), stats="sum")
-    return [(entry["sum"] or 0.0) for entry in stats]
+def _coverage_weighted_sum(geom, src, k):
+    """"Return the sum of raster values under a geometry, weighted by the fraction of each pixel covered."""
+    w0 = from_bounds(*geom.bounds, src.transform)
+    col0 = max(0, math.floor(w0.col_off))
+    row0 = max(0, math.floor(w0.row_off))
+    col1 = min(src.width, max(math.ceil(w0.col_off + w0.width), col0 + 1))
+    row1 = min(src.height, max(math.ceil(w0.row_off + w0.height), row0 + 1))
+    if col1 <= col0 or row1 <= row0:
+        return 0.0
+
+    win = Window(col0, row0, col1 - col0, row1 - row0)
+    data = src.read(1, window=win).astype("float64")
+    if src.nodata is not None:
+        data = np.where(data == src.nodata, 0.0, data)
+    data = np.where(np.isnan(data), 0.0, data)
+
+    height, width = data.shape
+    kk = max(1, min(k, 1500 // max(height, width)))
+    fine = transform_from_bounds(*window_bounds(win, src.transform), width * kk, height * kk)
+    cover = rasterize([(geom, 1)], out_shape=(height * kk, width * kk),
+                      transform=fine, fill=0, dtype="uint8")
+    fraction = np.reshape(cover, (height, kk, width, kk)).mean(axis=(1, 3))
+    return float((data * fraction).sum())
+
+
+def _zonal_sums(geometries, raster_path, k=COVERAGE_SUBSAMPLE):
+    with rasterio.open(raster_path) as src:
+        return [_coverage_weighted_sum(geom, src, k) for geom in geometries]
 
 
 def _bbox_sum(raster_path, bbox):
