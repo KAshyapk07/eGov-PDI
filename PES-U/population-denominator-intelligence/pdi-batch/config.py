@@ -70,7 +70,19 @@ TARGET_GROUPS = {
     "male_under30": ["m_00", "m_01", "m_05", "m_10", "m_15", "m_20", "m_25"],
 }
 
+AGE_BANDS = [
+    ("00", "00"), ("01", "01_04"), ("05", "05_09"), ("10", "10_14"), ("15", "15_19"),
+    ("20", "20_24"), ("25", "25_29"), ("30", "30_34"), ("35", "35_39"), ("40", "40_44"),
+    ("45", "45_49"), ("50", "50_54"), ("55", "55_59"), ("60", "60_64"), ("65", "65_69"),
+    ("70", "70_74"), ("75", "75_79"), ("80", "80_84"), ("85", "85_89"), ("90", "90_plus"),
+]
+for _token, _label in AGE_BANDS:
+    TARGET_GROUPS[f"female_age_{_label}"] = [f"f_{_token}"]
+    TARGET_GROUPS[f"male_age_{_label}"] = [f"m_{_token}"]
+
 STORAGE_CRS = "EPSG:4326"
+# Equal-area CRS used for district area / population density (EPSG:6933).
+AREA_CRS = "EPSG:6933"
 METRIC_CRS = None  # None auto-derives the UTM zone from the data
 
 BUILDING_CONFIDENCE_THRESHOLD = 0.70

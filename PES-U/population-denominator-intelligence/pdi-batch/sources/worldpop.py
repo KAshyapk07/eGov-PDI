@@ -1,10 +1,4 @@
-"""WorldPop zonal statistics computed directly from the GeoTIFFs (plan.md D3).
-
-Reads the rasters from disk with rasterstats and sums population per boundary for
-every configured target group; no raster is loaded into PostGIS. Exposes
-``compute_zonal`` for the estimation step and runs a standalone sanity check against
-the MANIFEST reference figures when executed.
-"""
+"""WorldPop zonal statistics computed directly from the GeoTIFFs """
 
 import sys
 

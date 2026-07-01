@@ -57,9 +57,15 @@ def estimate(with_buildings=True):
     table["population_estimate"] = table["population_estimate"].round().astype(int)
     table["estimated_households"] = table["building_count"]
 
+    # District area and resulting population density.
+    area_km2 = districts.to_crs(config.AREA_CRS).area / 1_000_000
+    table["area_km2"] = table[CODE].map(dict(zip(districts[CODE], area_km2))).round(1)
+    table["density_ppl_km2"] = (table["population_estimate"] / table["area_km2"]).round(1)
+
     ordered = [c for c in IDENTITY_COLUMNS if c in table.columns] + [
         "population_estimate", "confidence", "method", "divergence",
-        "building_count", "estimated_households", *GROUP_COLUMNS,
+        "building_count", "estimated_households", "area_km2", "density_ppl_km2",
+        *GROUP_COLUMNS,
     ]
     table = table[ordered]
 

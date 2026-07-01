@@ -1,14 +1,4 @@
-"""VIDA combined Open Buildings reader: load, confidence-filter, and clip to the campaign area.
-
-The source is a country-wide GeoParquet that merges Google Open Buildings v3, Microsoft, and
-OSM footprints (D8 - raw stays on disk). Only the rows whose footprint bbox intersects the
-campaign boundary bbox are read (predicate pushdown via the GeoParquet ``bbox`` covering
-column), then footprints are clipped exactly to the boundary polygons by a representative-point
-``within`` join. Only buildings inside a boundary are returned, tagged with boundary_code.
-
-Confidence is only carried on Google-sourced rows; Microsoft and OSM footprints have a null
-confidence and are kept regardless of the threshold.
-"""
+"""VIDA combined Open Buildings reader: load, confidence-filter, and clip to the campaign area."""
 
 import geopandas as gpd
 

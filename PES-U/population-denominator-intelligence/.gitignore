@@ -23,6 +23,9 @@ db/flyway.conf
 node_modules/
 dist/
 
+#demo
+demo/
+
 # OS / editor cruft
 .DS_Store
 Thumbs.db
