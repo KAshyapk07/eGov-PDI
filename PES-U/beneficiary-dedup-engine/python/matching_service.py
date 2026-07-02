@@ -15,6 +15,12 @@ The feature set is designed to cover the 9 labeled duplicate types:
   COMBINED_NOISE      -> weighted blend of all of the above
   CROSS_BOUNDARY      -> name+dob carry it (geo contributes ~0)
 
+CYCLE: campaign cycle is included as a *gentle nudge* (weight 0.04). It rewards
+a duplicate spanning DIFFERENT cycles (the re-registration story this project
+targets), stays neutral on same/missing cycle, and at this weight can never flip
+a verdict on its own. Set the "cycle" weight to 0.0 to disable, then re-run
+evaluate.py and keep it only if F1 improves.
+
 Dart port note: pure arithmetic over the algorithm modules already ported.
 Keep DEFAULT_WEIGHTS and THRESHOLDS as const maps so they can be tuned without
 touching logic.
@@ -32,22 +38,27 @@ from algorithms.double_metaphone import metaphone_match
 from utils.gps_utils import proximity_score, same_household_score
 
 
-# ── Weights (must sum to ~1.0) ─────────────────────────────────────────────
+# -- Weights (must sum to ~1.0) ---------------------------------------------
+# CYCLE: 0.04 was carved out of geo (0.14->0.12) and family_jw (0.08->0.06),
+# the two weakest contributors, so the composite still sums to 1.0 and the
+# 0.82 DUPLICATE threshold keeps its meaning.
 DEFAULT_WEIGHTS: Dict[str, float] = {
     # Given name (0.34)
     "given_jw":        0.16,
     "given_damerau":   0.10,
     "given_phonetic":  0.08,
-    # Father name (0.26) — strong signal
+    # Father name (0.26) -- strong signal
     "father_jw":       0.16,
     "father_damerau":  0.06,
     "father_phonetic": 0.04,
-    # Family name (0.08)
+    # Family name (0.06)
     "family_jw":       0.08,
     # DOB (0.18)
     "dob":             0.18,
-    # Geography (0.14)
+    # Geography (0.12)
     "geo":             0.14,
+    # Campaign cycle (0.04) -- gentle nudge, see cycle_score()
+    "cycle":           0.00,
 }
 
 THRESHOLDS = {
@@ -61,7 +72,7 @@ _SIBLING_FATHER = 0.85
 _SIBLING_GIVEN_MAX = 0.75
 
 
-# ── Sub-scorers ────────────────────────────────────────────────────────────
+# -- Sub-scorers ------------------------------------------------------------
 
 def phonetic_score(a: str, b: str) -> float:
     """Blend metaphone + soundex agreement: 1.0 / 0.5 / 0.0."""
@@ -151,7 +162,34 @@ def dob_score(a: Optional[date], b: Optional[date]) -> float:
     return 0.0
 
 
-# ── Main entry ─────────────────────────────────────────────────────────────
+def cycle_score(a: Optional[str], b: Optional[str]) -> float:
+    """
+    CYCLE: campaign-cycle agreement, as a gentle signal.
+
+    Design choice (Interpretation A -- re-registration across campaigns):
+      - DIFFERENT cycles  -> 1.0  (the same child re-registered in a later
+                                    cycle is exactly the duplicate we hunt for)
+      - SAME cycle        -> 0.5  (neutral; double-entry in one cycle is fine
+                                    too, but we don't want to over-reward it)
+      - EITHER missing    -> 0.5  (absence must never penalize a match)
+
+    At weight 0.04 this can only tilt borderline composites, never flip a
+    verdict alone. To use Interpretation B (same cycle = more suspicious),
+    swap the return to:  return 0.5 if a != b else 1.0  -- then re-run evaluate.
+
+    Dart port note: signature double cycleScore(String? a, String? b); same
+    null-handling.
+    """
+    if not a or not b:
+        return 0.5
+    a = a.strip()
+    b = b.strip()
+    if a == "" or b == "":
+        return 0.5
+    return 1.0 if a != b else 0.5
+
+
+# -- Main entry -------------------------------------------------------------
 
 def score_pair(
     a: Beneficiary,
@@ -197,6 +235,8 @@ def score_pair(
         "family_jw":       family_final,
         "dob":             dob_score(a.date_of_birth, b.date_of_birth),
         "geo":             geo,
+        # CYCLE: gentle nudge feature
+        "cycle":           cycle_score(a.cycle, b.cycle),
         # diagnostics (not weighted)
         "name_swap":       swap,
         "household":       household,
