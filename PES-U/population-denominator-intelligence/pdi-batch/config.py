@@ -10,7 +10,8 @@ WORLDPOP_TOTAL_RASTER = WORLDPOP_DIR / "WorldPop_CHAD.tif"
 WORLDPOP_AGESEX_DIR = WORLDPOP_DIR / "Worlpop_age_and_sex"
 WORLDPOP_ISO = "tcd"
 
-BOUNDARY_GEOJSON = REPO_ROOT / "pdi-boundary" / "output" / "chad_districts_common.geojson"
+# Engine boundary: full MSP health-district layer (126); swap in richer boundary data later on the same key.
+BOUNDARY_GEOJSON = REPO_ROOT / "pdi-boundary" / "output" / "chad_districts_msp.geojson"
 # VIDA combined Open Buildings (Google v3 + Microsoft + OSM), country-wide GeoParquet.
 BUILDINGS_PARQUET = DATA_SOURCE / "Chad" / "VIDA" / "TCD.parquet"
 BOUNDARY_CODE_FIELD = "Boundary_code"

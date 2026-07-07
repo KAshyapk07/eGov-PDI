@@ -13,6 +13,13 @@ TABLE_COLUMNS = [
     "msp_district", "msp_pcode", "msp_province", "match_status", "match_score",
 ]
 
+# Column order for the MSP-anchored engine boundary.
+ENGINE_COLUMNS = [
+    "Boundary_code", "msp_district", "msp_pcode", "msp_province",
+    "microplan_code", "microplan_district", "microplan_province",
+    "match_status", "match_score", "geometry",
+]
+
 
 def _boundary_code(row):
     if pd.notna(row.get("microplan_code")):
@@ -71,9 +78,42 @@ def reconcile():
     return table, geo
 
 
+def msp_boundary():
+    """The full MSP health-district layer (126 rows) as the engine boundary.
+
+    Every district is kept, keyed by a stable ``Boundary_code`` derived from the MSP pcode.
+    The microplan match is attached as optional columns where a name lined up, and left null
+    otherwise, so the engine runs over the complete MSP layer today and richer boundary data
+    (real microplan geometry, targets) can be joined in later on the same key.
+    """
+    microplan = itn_microplan.district_roster()
+    msp = msp_health.load_districts()
+
+    pairs, _microplan_only, _msp_only = name_match.match_names(
+        microplan["microplan_district"], msp["msp_district"], config.DISTRICT_FUZZY_CUTOFF)
+    pairs = pd.DataFrame(pairs, columns=["left", "right", "score", "kind"])
+
+    match = (
+        pairs.merge(microplan, left_on="left", right_on="microplan_district", how="left")
+        .rename(columns={"right": "msp_district", "score": "match_score"})
+        [["msp_district", "microplan_code", "microplan_district", "microplan_province",
+          "match_score", "kind"]]
+    )
+
+    gdf = msp.merge(match, on="msp_district", how="left")
+    gdf["match_status"] = gdf["kind"].map(
+        lambda kind: f"matched_{kind}" if isinstance(kind, str) else "unmatched_msp")
+    gdf["Boundary_code"] = _dedupe([f"MSP_{pcode}" for pcode in gdf["msp_pcode"]])
+
+    return gpd.GeoDataFrame(
+        gdf.reindex(columns=ENGINE_COLUMNS), geometry="geometry", crs=config.STORAGE_CRS)
+
+
 def main():
     table, geo = reconcile()
+    engine = msp_boundary()
     config.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    engine.to_file(config.MSP_BOUNDARY_GEOJSON, driver="GeoJSON")
 
     common = geo[geo["match_status"].isin(["matched_exact", "matched_fuzzy"])]
     msp_only = geo[geo["match_status"] == "unmatched_msp"]
@@ -88,11 +128,15 @@ def main():
     print("District reconciliation (microplan vs MSP)")
     for status in ["matched_exact", "matched_fuzzy", "unmatched_microplan", "unmatched_msp"]:
         print(f"  {status:<22} {int(counts.get(status, 0)):>4}")
+    matched = int((engine["match_status"].str.startswith("matched_")).sum())
     print(f"\n  common in both (GeoJSON):       {len(common):>4}")
     print(f"  MSP-only, not in microplan:     {len(msp_only):>4}")
     print(f"  microplan-only, not in MSP:     {len(not_in_msp):>4}")
-    print(f"\nWrote:\n  {config.COMMON_DISTRICTS_GEOJSON}\n  {config.MSP_ONLY_GEOJSON}"
-          f"\n  {config.DISTRICT_MISMATCH_CSV}\n  {config.DISTRICT_RECONCILIATION_CSV}")
+    print(f"\n  engine boundary (all MSP):      {len(engine):>4}"
+          f"  ({matched} with a microplan match)")
+    print(f"\nWrote:\n  {config.MSP_BOUNDARY_GEOJSON}\n  {config.COMMON_DISTRICTS_GEOJSON}"
+          f"\n  {config.MSP_ONLY_GEOJSON}\n  {config.DISTRICT_MISMATCH_CSV}"
+          f"\n  {config.DISTRICT_RECONCILIATION_CSV}")
 
 
 if __name__ == "__main__":

@@ -24,6 +24,8 @@ MSP_FACILITIES_SHP = (
 
 OUTPUT_DIR = REPO_ROOT / "pdi-boundary" / "output"
 
+MSP_BOUNDARY_GEOJSON = OUTPUT_DIR / "chad_districts_msp.geojson"
+
 COMMON_DISTRICTS_GEOJSON = OUTPUT_DIR / "chad_districts_common.geojson"
 
 MSP_ONLY_GEOJSON = OUTPUT_DIR / "districts_not_in_microplan.geojson"
