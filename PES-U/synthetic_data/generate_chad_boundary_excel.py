@@ -71,6 +71,13 @@ FRENCH_NAMES = {
     "TOUKRA II": "Toukra II",
     "TOUKRA III": "Toukra III",
     "WALIA EST": "Walia Est",
+    "CARRE 5 POL 50": "Carré 5 Pol 50",
+    "CARRE 6 POL 46": "Carré 6 Pol 46",
+    "CARRE 6 POL 47": "Carré 6 Pol 47",
+    "CARRE 7 POL 48": "Carré 7 Pol 48",
+    "CARRE 8 POL 51": "Carré 8 Pol 51",
+    "CARRE 8 POL 52": "Carré 8 Pol 52",
+    "CARRE 9 POL 42": "Carré 9 Pol 42",
 }
 
 ARABIC_NAMES = {
@@ -112,6 +119,13 @@ ARABIC_NAMES = {
     "TOUKRA II": "توكرا 2",
     "TOUKRA III": "توكرا 3",
     "WALIA EST": "واليا الشرقية",
+    "CARRE 5 POL 50": "كاريه 5 بول 50",
+    "CARRE 6 POL 46": "كاريه 6 بول 46",
+    "CARRE 6 POL 47": "كاريه 6 بول 47",
+    "CARRE 7 POL 48": "كاريه 7 بول 48",
+    "CARRE 8 POL 51": "كاريه 8 بول 51",
+    "CARRE 8 POL 52": "كاريه 8 بول 52",
+    "CARRE 9 POL 42": "كاريه 9 بول 42",
 }
 
 
@@ -147,14 +161,14 @@ def parse_boundary_code(code):
 
     arrond_num = parts[0]  # e.g., "01", "10"
 
-    if "CS" in code:
+    if "CS" in parts:
         # Health center: POLIO_CHAD_CH_01_XX_YY_CS_NAME
         facility_idx = parts.index("CS")
         hf_num = parts[facility_idx - 1]
         name_parts = parts[facility_idx + 1:]
         name = " ".join(name_parts).replace("  ", " ")
         return arrond_num, hf_num, name, "CS"
-    elif "CARR" in code:
+    elif "CARR" in parts:
         # Polling area
         name_parts = [p for p in parts[2:] if p]
         name = " ".join(name_parts).replace("  ", " ").replace("CARR ", "CARRE ").replace("POL ", "POL ")
@@ -257,6 +271,7 @@ def generate_excel():
                            "", locality, code, locality.title(), arabic,
                            info["lat"], info["lon"]])
 
+    os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
     wb.save(OUTPUT_PATH)
     print(f"Excel saved: {OUTPUT_PATH}")
     print(f"Total rows: {row_num - 1} (including header)")
