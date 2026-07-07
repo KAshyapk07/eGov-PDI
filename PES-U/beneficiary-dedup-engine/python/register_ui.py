@@ -1,57 +1,68 @@
 """
-register_ui.py  —  Offline field-worker registration UI with duplicate warning.
+register_ui.py  —  Offline field-worker registration UI (cycle-aware).
 
-Cycles 1-3 are preloaded as the existing population. The worker enters a new
-cycle-4 record; on Save, the real dedup engine checks it against the existing
-population. If any potential duplicate is found, the save is BLOCKED and a
-warning + the candidate matches are shown for review. The worker must explicitly
-decide (Register anyway / Cancel) before anything is stored.
+NEW MODEL (vaccination drives):
+Each cycle is a different drive (cycle 1 = malaria, cycle 2 = polio, ...).
+The SAME person is EXPECTED to appear across cycles — that is normal repeat
+participation, not an error. So:
+
+  * SAME-CYCLE match  -> a real duplicate (double registration in THIS drive).
+                         BLOCKS the save; worker must review before storing.
+  * PAST-CYCLE match  -> the person's history across earlier drives.
+                         Shown for information only; never blocks.
+
+The field worker enters CYCLE 3 records. Existing population = cycles 1-3
+(cycle 3 is needed so we can detect same-cycle duplicates), plus anything
+saved this session.
 
 Fully offline: pure Python standard library (tkinter). No network, no pip.
 
 Run:
     python register_ui.py --records <path to dedup_test_records.csv>
-
-The engine modules (digit_dedup_engine.py etc.) must be in the same folder.
 """
 
 import argparse
-import csv
 import os
 import sys
 import uuid
-from datetime import datetime, date
+from datetime import datetime
 
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-# Engine imports (same folder)
 from digit_dedup_engine import load_records, check_for_duplicates
 from models.candidate_pair import Beneficiary
 from models.dedup_result import DUPLICATE, REVIEW
+from algorithms.double_metaphone import metaphone_code
 
-# Only compare a new record against records from these cycles.
-EXISTING_CYCLES = {"1", "2", "3"}
-NEW_CYCLE = "4"
+# ── Cycle model ────────────────────────────────────────────────────────────
+NEW_CYCLE = "3"                 # the drive the worker is registering for now
+PAST_CYCLES = {"1", "2"}        # earlier drives -> shown as history, never block
+EXISTING_CYCLES = {"1", "2", "3"}  # load these as the existing population
+
+# Optional friendly labels for the drives (edit to match reality).
+CYCLE_LABELS = {
+    "1": "Cycle 1",
+    "2": "Cycle 2",
+    "3": "Cycle 3",
+}
 
 DATE_INPUT_FORMATS = ["%d-%m-%Y", "%Y-%m-%d", "%d/%m/%Y"]
 
 
-# ── Blocking for a single new record ───────────────────────────────────────
-# check_for_duplicates() compares against every existing record. For tens of
-# thousands that is still workable, but we pre-filter to the plausible ones so
-# the UI stays instant — this mirrors how the real on-device app would issue a
-# narrow SQLite query rather than scanning the whole table.
-from algorithms.double_metaphone import metaphone_code
+def cycle_label(c):
+    c = (c or "").strip()
+    return CYCLE_LABELS.get(c, f"Cycle {c}" if c else "Cycle ?")
 
 
 def _candidate_subset(new_rec, existing):
-    """Return existing records worth scoring against the new one."""
+    """Fast pre-filter: keep existing records sharing boundary, phonetic given
+    name, or birth year with the new record. Mirrors the SQLite query the real
+    on-device app would run."""
     code = metaphone_code(new_rec.norm_given) if new_rec.norm_given else ""
     year = new_rec.dob_year
     subset = []
     for r in existing:
-        # same boundary, OR same given-name phonetic code, OR same birth year
         if new_rec.boundary_code and r.boundary_code == new_rec.boundary_code:
             subset.append(r); continue
         if code and r.norm_given and metaphone_code(r.norm_given) == code:
@@ -77,18 +88,17 @@ class RegistrationApp:
     def __init__(self, master, records_path):
         self.master = master
         self.records_path = records_path
-        master.title("Beneficiary Registration — Cycle 4 (Offline)")
-        master.geometry("640x720")
+        master.title(f"Beneficiary Registration — {cycle_label(NEW_CYCLE)} (Offline)")
+        master.geometry("660x760")
 
-        self.existing = []       # cycles 1-3
-        self.new_records = []    # saved this session
+        self.existing = []      # cycles 1-3 from file
+        self.new_records = []   # saved this session (all cycle 3)
 
         self._build_form()
         self._load_existing()
 
-    # ── data ──
     def _load_existing(self):
-        self.status.set("Loading existing records (cycles 1-3)…")
+        self.status.set("Loading existing records (cycles 1-3)...")
         self.master.update_idletasks()
         try:
             all_recs = load_records(self.records_path)
@@ -98,18 +108,18 @@ class RegistrationApp:
             return
         self.existing = [r for r in all_recs
                          if (r.cycle or "").strip() in EXISTING_CYCLES]
+        n3 = sum(1 for r in self.existing if (r.cycle or "").strip() == NEW_CYCLE)
         self.status.set(
-            f"Ready. {len(self.existing):,} existing records (cycles 1-3) loaded. "
-            f"Entering cycle {NEW_CYCLE}."
-        )
+            f"Ready. {len(self.existing):,} existing records loaded "
+            f"({n3:,} already in {cycle_label(NEW_CYCLE)}). "
+            f"Same-cycle matches block; past-cycle matches show as history.")
 
-    # ── UI layout ──
     def _build_form(self):
         pad = {"padx": 8, "pady": 4}
         frm = ttk.Frame(self.master, padding=12)
         frm.pack(fill="both", expand=True)
 
-        ttk.Label(frm, text="New Cycle 4 Registration",
+        ttk.Label(frm, text=f"New Registration - {cycle_label(NEW_CYCLE)}",
                   font=("Segoe UI", 14, "bold")).grid(
                       row=0, column=0, columnspan=2, sticky="w", pady=(0, 10))
 
@@ -129,59 +139,44 @@ class RegistrationApp:
         r = 1
         for key, label in rows:
             ttk.Label(frm, text=label).grid(row=r, column=0, sticky="w", **pad)
-            e = ttk.Entry(frm, width=40)
+            e = ttk.Entry(frm, width=42)
             e.grid(row=r, column=1, sticky="w", **pad)
             self.fields[key] = e
             r += 1
 
-        # Gender radio
         ttk.Label(frm, text="Gender *").grid(row=r, column=0, sticky="w", **pad)
         self.gender = tk.StringVar(value="MALE")
-        gfrm = ttk.Frame(frm)
-        gfrm.grid(row=r, column=1, sticky="w", **pad)
-        ttk.Radiobutton(gfrm, text="Male", variable=self.gender,
-                        value="MALE").pack(side="left")
-        ttk.Radiobutton(gfrm, text="Female", variable=self.gender,
-                        value="FEMALE").pack(side="left")
+        gfrm = ttk.Frame(frm); gfrm.grid(row=r, column=1, sticky="w", **pad)
+        ttk.Radiobutton(gfrm, text="Male", variable=self.gender, value="MALE").pack(side="left")
+        ttk.Radiobutton(gfrm, text="Female", variable=self.gender, value="FEMALE").pack(side="left")
         r += 1
 
-        btns = ttk.Frame(frm)
-        btns.grid(row=r, column=0, columnspan=2, pady=14)
+        btns = ttk.Frame(frm); btns.grid(row=r, column=0, columnspan=2, pady=14)
         ttk.Button(btns, text="Check & Save", command=self.on_save).pack(side="left", padx=6)
         ttk.Button(btns, text="Clear", command=self.clear_form).pack(side="left", padx=6)
         r += 1
 
-        self.status = tk.StringVar(value="Starting…")
+        self.status = tk.StringVar(value="Starting...")
         ttk.Label(frm, textvariable=self.status, foreground="#555",
-                  wraplength=580, justify="left").grid(
+                  wraplength=600, justify="left").grid(
                       row=r, column=0, columnspan=2, sticky="w", pady=(6, 0))
 
-    # ── build a Beneficiary from the form ──
     def _form_to_record(self):
         def val(k): return self.fields[k].get().strip()
-
         dob = _parse_date(val("date_of_birth"))
         if dob == "INVALID":
-            messagebox.showwarning("Invalid date",
-                                   "Date of birth must be DD-MM-YYYY.")
+            messagebox.showwarning("Invalid date", "Date of birth must be DD-MM-YYYY.")
             return None
-
         def fnum(k):
-            try:
-                return float(val(k)) if val(k) else None
-            except ValueError:
-                return None
-
-        # required-field check
+            try: return float(val(k)) if val(k) else None
+            except ValueError: return None
         missing = [lbl for key, lbl in [
-            ("given_name", "Given name"), ("family_name", "Family name"),
-            ("date_of_birth", "Date of birth"), ("boundary_code", "Boundary code")]
+            ("given_name","Given name"), ("family_name","Family name"),
+            ("date_of_birth","Date of birth"), ("boundary_code","Boundary code")]
             if not val(key)]
         if missing:
-            messagebox.showwarning("Missing fields",
-                                   "Please fill: " + ", ".join(missing))
+            messagebox.showwarning("Missing fields", "Please fill: " + ", ".join(missing))
             return None
-
         rec = Beneficiary(
             individual_id=str(uuid.uuid4()),
             given_name=val("given_name") or None,
@@ -192,8 +187,7 @@ class RegistrationApp:
             date_of_birth=dob,
             boundary_code=val("boundary_code") or None,
             locality_name=val("locality_name") or None,
-            latitude=fnum("latitude"),
-            longitude=fnum("longitude"),
+            latitude=fnum("latitude"), longitude=fnum("longitude"),
             location_accuracy=None,
             mobile_number=val("mobile_number") or None,
             cycle=NEW_CYCLE,
@@ -201,116 +195,142 @@ class RegistrationApp:
         rec.normalize()
         return rec
 
-    # ── save flow ──
     def on_save(self):
         rec = self._form_to_record()
         if rec is None:
             return
-
-        self.status.set("Checking for duplicates…")
+        self.status.set("Checking...")
         self.master.update_idletasks()
 
         pool = self._candidate_pool(rec)
+        by_id = {r.individual_id: r for r in pool}
         matches = check_for_duplicates(rec, pool)
         strong = [m for m in matches if m.verdict in (DUPLICATE, REVIEW)]
 
-        if not strong:
-            self._commit(rec)
-            messagebox.showinfo("Saved",
-                                "No duplicate found. Record saved.")
-            self.status.set(
-                f"Saved. {len(self.new_records)} new cycle-4 record(s) this session.")
-            self.clear_form()
-            return
+        # Split by the cycle of the matched record.
+        same_cycle, past_cycle = [], []
+        for m in strong:
+            other = by_id.get(m.id_b)
+            if other is None:
+                continue
+            oc = (other.cycle or "").strip()
+            if oc == NEW_CYCLE:
+                same_cycle.append(m)
+            elif oc in PAST_CYCLES:
+                past_cycle.append(m)
 
-        # BLOCK: show warning + candidates, require explicit decision
-        self._show_duplicate_dialog(rec, strong, pool)
+        if same_cycle:
+            # BLOCK: a real duplicate within this drive.
+            self._show_duplicate_dialog(rec, same_cycle, past_cycle, by_id)
+        else:
+            # No same-cycle duplicate -> save. Show past-cycle history as info.
+            self._commit(rec)
+            if past_cycle:
+                self._show_history_info(rec, past_cycle, by_id)
+            else:
+                messagebox.showinfo("Saved", "No duplicate found. Record saved.")
+            self.status.set(
+                f"Saved to {cycle_label(NEW_CYCLE)}. "
+                f"{len(self.new_records)} new record(s) this session.")
+            self.clear_form()
 
     def _candidate_pool(self, rec):
-        # existing cycles 1-3 plus anything already saved this session
         base = _candidate_subset(rec, self.existing)
-        base.extend(self.new_records)
+        base.extend(self.new_records)  # same-cycle dupes entered this session
         return base
 
     def _commit(self, rec):
         self.new_records.append(rec)
 
-    # ── duplicate review dialog ──
-    def _show_duplicate_dialog(self, rec, matches, pool):
-        by_id = {r.individual_id: r for r in pool}
+    # ── history info popup (non-blocking) ──
+    def _show_history_info(self, rec, past, by_id):
+        lines = []
+        for m in sorted(past, key=lambda x: x.score, reverse=True)[:6]:
+            o = by_id.get(m.id_b)
+            if not o: continue
+            lines.append(f"- {cycle_label(o.cycle)}: {o.given_name} {o.family_name} "
+                         f"(match {m.score:.2f})")
+        messagebox.showinfo(
+            "Saved - past-cycle history found",
+            "Record saved to this drive.\n\n"
+            "This person also appears in earlier drives (expected):\n\n"
+            + "\n".join(lines))
 
+    # ── same-cycle duplicate dialog (blocking) ──
+    def _show_duplicate_dialog(self, rec, same, past, by_id):
         dlg = tk.Toplevel(self.master)
-        dlg.title("⚠ Possible Duplicate")
-        dlg.geometry("720x520")
+        dlg.title("Duplicate in this cycle")
+        dlg.geometry("760x560")
         dlg.transient(self.master)
-        dlg.grab_set()  # modal — blocks the main window
+        dlg.grab_set()
 
         ttk.Label(dlg,
                   text="Warning: could be a duplicate or duplicate record exists.",
-                  font=("Segoe UI", 13, "bold"),
-                  foreground="#b00020", wraplength=680).pack(
-                      anchor="w", padx=14, pady=(14, 6))
+                  font=("Segoe UI", 13, "bold"), foreground="#b00020",
+                  wraplength=720).pack(anchor="w", padx=14, pady=(14, 4))
         ttk.Label(dlg,
-                  text="Review the potential match(es) below before deciding.",
-                  wraplength=680).pack(anchor="w", padx=14)
+                  text=(f"A matching record already exists in "
+                        f"{cycle_label(NEW_CYCLE)} (the current drive). "
+                        f"Review before saving."),
+                  wraplength=720).pack(anchor="w", padx=14)
 
-        cols = ("score", "verdict", "name", "father", "dob", "boundary", "cycle", "why")
-        tree = ttk.Treeview(dlg, columns=cols, show="headings", height=8)
-        widths = {"score": 60, "verdict": 80, "name": 130, "father": 100,
-                  "dob": 90, "boundary": 90, "cycle": 45, "why": 120}
-        for c in cols:
-            tree.heading(c, text=c.capitalize())
-            tree.column(c, width=widths[c], anchor="w")
-        tree.pack(fill="both", expand=True, padx=14, pady=10)
+        ttk.Label(dlg, text="Same-cycle match(es) - this blocks the save:",
+                  font=("Segoe UI", 10, "bold"), foreground="#b00020").pack(
+                      anchor="w", padx=14, pady=(10, 2))
+        self._matches_table(dlg, same, by_id, height=5)
 
-        for m in matches:
-            other = by_id.get(m.id_b)
-            if other is None:
-                continue
-            top = ", ".join(f"{k} {v:.2f}" for k, v in m.top_signals(2))
-            tree.insert("", "end", values=(
-                f"{m.score:.2f}", m.verdict,
-                f"{other.given_name or ''} {other.family_name or ''}".strip(),
-                other.father_name or "",
-                other.date_of_birth.strftime("%d-%m-%Y") if other.date_of_birth else "",
-                (other.boundary_code or "")[-12:],
-                other.cycle or "",
-                top,
-            ))
+        if past:
+            ttk.Label(dlg, text="Past-cycle history (informational only):",
+                      font=("Segoe UI", 10, "bold"), foreground="#555").pack(
+                          anchor="w", padx=14, pady=(8, 2))
+            self._matches_table(dlg, past, by_id, height=4)
 
-        # New record summary
         ttk.Label(dlg, text=(
             f"New entry: {rec.given_name} {rec.family_name}  |  "
             f"father: {rec.father_name or '-'}  |  "
             f"DOB: {rec.date_of_birth.strftime('%d-%m-%Y') if rec.date_of_birth else '-'}  |  "
-            f"cycle {rec.cycle}"),
-            foreground="#333", wraplength=680).pack(anchor="w", padx=14)
+            f"{cycle_label(rec.cycle)}"),
+            foreground="#333", wraplength=720).pack(anchor="w", padx=14, pady=(8, 0))
 
-        btns = ttk.Frame(dlg)
-        btns.pack(pady=14)
+        bfrm = ttk.Frame(dlg); bfrm.pack(pady=14)
 
         def cancel():
             dlg.destroy()
-            self.status.set("Save cancelled — treated as duplicate, not stored.")
+            self.status.set("Save cancelled - same-cycle duplicate, not stored.")
 
         def register_anyway():
-            if messagebox.askyesno(
-                    "Confirm",
-                    "You are about to save this as a NEW, distinct person.\n"
-                    "Confirm it is not one of the records shown?"):
+            if messagebox.askyesno("Confirm",
+                    "Save as a NEW, distinct person in this cycle?\n"
+                    "Confirm it is not one of the same-cycle records shown."):
                 dlg.destroy()
                 self._commit(rec)
-                messagebox.showinfo("Saved",
-                                    "Registered as a new record (override).")
+                messagebox.showinfo("Saved", "Registered as a new record (override).")
                 self.status.set(
-                    f"Saved with override. "
-                    f"{len(self.new_records)} new record(s) this session.")
+                    f"Saved with override. {len(self.new_records)} new record(s) this session.")
                 self.clear_form()
 
-        ttk.Button(btns, text="Cancel (it's a duplicate)",
-                   command=cancel).pack(side="left", padx=8)
-        ttk.Button(btns, text="Register anyway (not a duplicate)",
+        ttk.Button(bfrm, text="Cancel (it's a duplicate)", command=cancel).pack(side="left", padx=8)
+        ttk.Button(bfrm, text="Register anyway (not a duplicate)",
                    command=register_anyway).pack(side="left", padx=8)
+
+    def _matches_table(self, parent, matches, by_id, height):
+        cols = ("score", "verdict", "name", "father", "dob", "cycle", "why")
+        tree = ttk.Treeview(parent, columns=cols, show="headings", height=height)
+        widths = {"score":55,"verdict":75,"name":140,"father":110,"dob":90,"cycle":140,"why":130}
+        for c in cols:
+            tree.heading(c, text=c.capitalize())
+            tree.column(c, width=widths[c], anchor="w")
+        tree.pack(fill="x", padx=14)
+        for m in sorted(matches, key=lambda x: x.score, reverse=True):
+            o = by_id.get(m.id_b)
+            if not o: continue
+            why = ", ".join(f"{k} {v:.2f}" for k, v in m.top_signals(2))
+            tree.insert("", "end", values=(
+                f"{m.score:.2f}", m.verdict,
+                f"{o.given_name or ''} {o.family_name or ''}".strip(),
+                o.father_name or "",
+                o.date_of_birth.strftime("%d-%m-%Y") if o.date_of_birth else "",
+                cycle_label(o.cycle), why))
 
     def clear_form(self):
         for e in self.fields.values():
@@ -323,11 +343,8 @@ def main():
     ap.add_argument("--records", required=True,
                     help="Path to dedup_test_records.csv (has cycles 1-3).")
     args = ap.parse_args()
-
     if not os.path.exists(args.records):
-        print("File not found:", args.records)
-        sys.exit(1)
-
+        print("File not found:", args.records); sys.exit(1)
     root = tk.Tk()
     RegistrationApp(root, args.records)
     root.mainloop()
