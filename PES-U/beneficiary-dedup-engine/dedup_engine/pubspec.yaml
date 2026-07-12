@@ -1,0 +1,10 @@
+name: dedup_engine
+description: Offline, schema-agnostic record deduplication. Warns when a record being registered looks like one that already exists. Runs entirely on-device with no network calls.
+version: 0.1.0
+
+environment:
+  sdk: ^3.12.2
+
+dev_dependencies:
+  test: ^1.25.0
+  lints: ^5.0.0
