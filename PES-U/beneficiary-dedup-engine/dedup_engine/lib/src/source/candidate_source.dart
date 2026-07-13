@@ -1,6 +1,6 @@
 import '../models/dedup_config.dart';
 import '../algorithms/double_metaphone.dart';
-import '../utils/string_utils.dart';
+import '../utils/string_utils.dart' show normalizeName, yearOf;
 
 /// Where candidate records come from.
 ///
@@ -71,8 +71,8 @@ bool _matchesKey(
   // Year column: the year part must match.
   final yc = key.yearColumn;
   if (yc != null) {
-    final ya = _yearOf(a[yc]);
-    final yb = _yearOf(b[yc]);
+    final ya = yearOf(a[yc]);
+    final yb = yearOf(b[yc]);
     if (ya == null || yb == null) return false;
     if (ya != yb) return false;
   }
@@ -82,30 +82,6 @@ bool _matchesKey(
   if (key.columns.isEmpty && pc == null && yc == null) return false;
 
   return true;
-}
-
-int? _yearOf(dynamic v) {
-  if (v == null) return null;
-  if (v is DateTime) return v.year;
-
-  final s = v.toString().trim();
-  if (s.isEmpty) return null;
-
-  final iso = DateTime.tryParse(s);
-  if (iso != null) return iso.year;
-
-  // dd-MM-yyyy / dd/MM/yyyy
-  final parts = s.split(RegExp(r'[-/]'));
-  if (parts.length == 3) {
-    // Year is whichever part has 4 digits.
-    for (final p in parts) {
-      if (p.length == 4) {
-        final y = int.tryParse(p);
-        if (y != null) return y;
-      }
-    }
-  }
-  return null;
 }
 
 /// A [CandidateSource] backed by a plain in-memory list.

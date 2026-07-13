@@ -92,3 +92,30 @@ String tokenSort(String name) {
   parts.sort();
   return parts.join(' ');
 }
+
+/// Extract the 4-digit year from a date value.
+///
+/// Handles DateTime objects, ISO strings (yyyy-MM-dd), and dd-MM-yyyy or
+/// dd/MM/yyyy strings where the 4-digit part is the year.
+int? yearOf(dynamic v) {
+  if (v == null) return null;
+  if (v is DateTime) return v.year;
+
+  final s = v.toString().trim();
+  if (s.isEmpty) return null;
+
+  final iso = DateTime.tryParse(s);
+  if (iso != null) return iso.year;
+
+  // dd-MM-yyyy / dd/MM/yyyy — year is whichever part has 4 digits.
+  final parts = s.split(RegExp(r'[-/]'));
+  if (parts.length == 3) {
+    for (final p in parts) {
+      if (p.length == 4) {
+        final y = int.tryParse(p);
+        if (y != null) return y;
+      }
+    }
+  }
+  return null;
+}

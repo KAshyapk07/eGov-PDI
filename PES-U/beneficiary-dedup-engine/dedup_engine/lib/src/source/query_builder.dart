@@ -1,6 +1,6 @@
 import '../models/dedup_config.dart';
 import '../algorithms/double_metaphone.dart';
-import '../utils/string_utils.dart';
+import '../utils/string_utils.dart' show normalizeName, yearOf;
 
 /// A SQL statement plus its bound parameters.
 class SqlQuery {
@@ -82,7 +82,7 @@ class QueryBuilder {
       // Year blocking: compare the 4-digit year.
       final yc = key.yearColumn;
       if (yc != null) {
-        final year = _yearOf(newRecord[yc]);
+        final year = yearOf(newRecord[yc]);
         if (year == null) {
           parts.clear();
         } else {
@@ -106,18 +106,29 @@ class QueryBuilder {
     // Always exclude the record itself, if it already has an id.
     final newId = newRecord[config.idColumn];
 
-    if (clauses.isEmpty) {
-      // No usable blocking key -> fall back to scanning, but still capped.
-      if (newId != null) {
-        buf.write(' WHERE $_qualifiedId != ?');
-        params.add(newId);
-      }
-    } else {
-      buf.write(' WHERE (${clauses.join(' OR ')})');
-      if (newId != null) {
-        buf.write(' AND $_qualifiedId != ?');
-        params.add(newId);
-      }
+    final conditions = <String>[];
+
+    if (clauses.isNotEmpty) {
+      conditions.add('(${clauses.join(' OR ')})');
+    }
+
+    if (newId != null) {
+      conditions.add('$_qualifiedId != ?');
+      params.add(newId);
+    }
+
+    // Exclude soft-deleted records.
+    final delCol = config.softDeleteColumn;
+    if (delCol != null) {
+      conditions.add(
+        '(${config.tableName}.$delCol IS NULL '
+        'OR ${config.tableName}.$delCol = 0 '
+        "OR ${config.tableName}.$delCol = 'false')",
+      );
+    }
+
+    if (conditions.isNotEmpty) {
+      buf.write(' WHERE ${conditions.join(' AND ')}');
     }
 
     buf.write(' LIMIT ${config.maxCandidates}');
@@ -152,25 +163,4 @@ class QueryBuilder {
     return false;
   }
 
-  static int? _yearOf(dynamic v) {
-    if (v == null) return null;
-    if (v is DateTime) return v.year;
-
-    final s = v.toString().trim();
-    if (s.isEmpty) return null;
-
-    final iso = DateTime.tryParse(s);
-    if (iso != null) return iso.year;
-
-    final parts = s.split(RegExp(r'[-/]'));
-    if (parts.length == 3) {
-      for (final p in parts) {
-        if (p.length == 4) {
-          final y = int.tryParse(p);
-          if (y != null) return y;
-        }
-      }
-    }
-    return null;
-  }
 }

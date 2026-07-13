@@ -227,6 +227,10 @@ class DedupConfig {
   /// Maximum candidates to fetch for one incoming record.
   final int maxCandidates;
 
+  /// Optional column holding a soft-delete flag (e.g. "isDeleted"). When set,
+  /// the SQL query excludes rows where this column is true/1/'true'.
+  final String? softDeleteColumn;
+
   // ── Verdict thresholds ──────────────────────────────────────────────────
   final double duplicateThreshold;
   final double reviewThreshold;
@@ -243,6 +247,7 @@ class DedupConfig {
     this.siblingGuard,
     this.blockingKeys = const [],
     this.maxCandidates = 500,
+    this.softDeleteColumn,
     this.duplicateThreshold = 0.82,
     this.reviewThreshold = 0.62,
   });

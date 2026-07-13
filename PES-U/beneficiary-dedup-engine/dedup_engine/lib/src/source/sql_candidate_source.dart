@@ -12,8 +12,8 @@ import 'query_builder.dart';
 ///
 /// sqlite3 (synchronous):
 ///     final executor = (sql, params) async {
-///     final result = db.select(sql, params);
-///       return result.map((r) => `Map<String, dynamic>`.from(r)).toList();
+///       final result = db.select(sql, params);
+///       return result.map((r) => Map<String, dynamic>.from(r)).toList();
 ///     };
 ///
 /// drift / a repository layer: wrap whatever query method you already have.
@@ -42,15 +42,17 @@ class SqlCandidateSource implements CandidateSource {
 
     final rows = await executor(query.sql, query.params);
 
-    // SQLite has no phonetic function, so a phonetic blocking key cannot be
-    // expressed in SQL. If one is configured, the SQL result is a superset:
-    // a row is kept if it satisfied a SQL-expressible key OR the phonetic one.
-    //
-    // The SQL already filtered on the expressible keys, so every returned row
-    // is valid. The phonetic key can only ADD candidates, and those would need
-    // a full scan to find — which we deliberately avoid on-device. Document
-    // this: pair a phonetic key with an exact column (e.g. boundary) so it is
-    // still expressible.
+    // SQLite has no phonetic function, so phonetic blocking keys cannot be
+    // expressed in SQL. The SQL query only filters on exact and year columns.
+    // If any blocking key uses a phoneticColumn, we must post-filter in Dart
+    // to ensure each returned row actually satisfies at least one blocking key
+    // (either a fully SQL-expressed key or a phonetic key checked here).
+    if (builder.needsPhoneticFilter) {
+      return rows.where((row) {
+        return matchesAnyBlockingKey(newRecord, row, config);
+      }).toList();
+    }
+
     return rows;
   }
 
