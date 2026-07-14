@@ -9,6 +9,13 @@ pyproj
 pyogrio
 pyarrow  # GeoParquet I/O (VIDA combined Open Buildings)
 
+requests       # geoBoundaries / WorldPop REST
+fsspec         # stream remote GeoParquet with bbox pushdown
+aiohttp        # fsspec https backend
+
+# Boundary sheet (microplan Excel) input
+openpyxl    
+
 # Clustering
 scikit-learn
 

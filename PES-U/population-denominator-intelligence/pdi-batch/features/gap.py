@@ -36,17 +36,28 @@ def _coverage(registered, estimated):
     return (registered / estimated).where(estimated > 0).round(4)
 
 
-def build(scope="national"):
-    """Return (table, gdf): the per-district gap report as a DataFrame and a GeoDataFrame."""
+def build(scope="national", iso3=None):
+    """Return (table, gdf): the per-unit gap report as a DataFrame and a GeoDataFrame.
+
+    The register is used only when the entered country has register data
+    (``register.has_register``); otherwise coverage is left undefined and every
+    unit is classified ``NO_REGISTER`` rather than a misleading zero-coverage RED.
+    """
     if not config.DISTRICT_POPULATION_GEOJSON.exists():
         raise FileNotFoundError(
             f"{config.DISTRICT_POPULATION_GEOJSON} not found - run features.estimation first")
     est = gpd.read_file(config.DISTRICT_POPULATION_GEOJSON)
 
-    counts = register.registered_counts(est[[CODE, "geometry"]])
-    df = est.merge(counts, on=CODE, how="left")
-    for column in ["registered_population", "registered_under5", "registered_households"]:
-        df[column] = df[column].fillna(0).astype(int)
+    register_available = register.has_register(iso3)
+    if register_available:
+        counts = register.registered_counts(est[[CODE, "geometry"]])
+        df = est.merge(counts, on=CODE, how="left")
+        for column in ["registered_population", "registered_under5", "registered_households"]:
+            df[column] = df[column].fillna(0).astype(int)
+    else:
+        df = est.copy()
+        for column in ["registered_population", "registered_under5", "registered_households"]:
+            df[column] = 0
 
     df["campaign_id"] = config.CAMPAIGN_ID
     df["tenant_id"] = config.TENANT_ID
@@ -57,9 +68,14 @@ def build(scope="national"):
     df["household_gap"] = df["estimated_households"] - df["registered_households"]
     df["coverage_ratio"] = _coverage(df["registered_population"], df["estimated_population"])
     df["coverage_ratio_under5"] = _coverage(df["registered_under5"], df["estimated_under5"])
-    df["gap_classification"] = df.apply(
-        lambda row: classify(row["coverage_ratio"], row["registered_population"],
-                             row["building_count"]), axis=1)
+    if register_available:
+        df["gap_classification"] = df.apply(
+            lambda row: classify(row["coverage_ratio"], row["registered_population"],
+                                 row["building_count"]), axis=1)
+    else:
+        df["gap_classification"] = "NO_REGISTER"
+        df["coverage_ratio"] = pd.NA
+        df["coverage_ratio_under5"] = pd.NA
     df["computed_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
     if scope == "ndjamena":
@@ -78,9 +94,10 @@ def main():
     parser.add_argument("--scope", choices=["national", "ndjamena"], default="national",
                         help="national: every district (uncovered ones fall to BLACK); "
                              "ndjamena: only districts the register actually covers")
+    parser.add_argument("--iso3", help="country ISO3 (default from PDI_ISO3 / config)")
     args = parser.parse_args()
 
-    table, gdf = build(scope=args.scope)
+    table, gdf = build(scope=args.scope, iso3=args.iso3)
     config.GAP_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     table.to_csv(config.GAP_REPORT_CSV, index=False, encoding="utf-8-sig")
     gdf.to_file(config.GAP_REPORT_GEOJSON, driver="GeoJSON")

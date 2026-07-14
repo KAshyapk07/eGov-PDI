@@ -7,25 +7,26 @@ import pandas as pd
 
 import config
 from sources import buildings, worldpop
-from sources.boundaries import load_boundaries
+from sources.catchments import build_analysis_units
 
 CODE = config.BOUNDARY_CODE_FIELD
 GROUP_COLUMNS = list(config.TARGET_GROUPS)
 IDENTITY_COLUMNS = [
-    CODE, "microplan_district", "microplan_province",
+    CODE, config.BOUNDARY_NAME_FIELD, "is_catchment",
+    "microplan_district", "microplan_province",
     "msp_district", "msp_province", "match_status",
 ]
 
 
-def building_counts(boundaries):
-    """Buildings assigned to each district, as a count keyed by boundary code."""
-    clipped = buildings.clip_to_boundaries(boundaries)
+def building_counts(boundaries, iso3=None):
+    """Buildings assigned to each unit, as a count keyed by boundary code."""
+    clipped = buildings.clip_to_boundaries(boundaries, iso3)
     return clipped.groupby("boundary_code").size()
 
 
-def _ensemble(total, count):
+def _ensemble(total, count, household_size):
     """Blend the WorldPop and building-count estimates per the Feature 1 algorithm."""
-    building_estimate = count * config.AVG_HOUSEHOLD_SIZE
+    building_estimate = count * household_size
     if total <= 0:
         return building_estimate, 0.40, "buildings_only", None
 
@@ -41,18 +42,24 @@ def _ensemble(total, count):
     return population, round(confidence, 3), method, round(divergence, 3)
 
 
-def estimate(with_buildings=True):
-    """Return (table, gdf): per-district estimates as a DataFrame and a GeoDataFrame."""
-    districts = load_boundaries()
+def estimate(iso3=None, sheet_path=None, with_buildings=True, avg_household_size=None):
+    """Return (table, gdf): per-unit estimates as a DataFrame and a GeoDataFrame.
 
-    groups = pd.DataFrame(worldpop.compute_zonal(districts)).set_index("boundary_code")
+    Units are ADM2 districts, or Voronoi catchment cells where ``sheet_path`` is
+    given. ``avg_household_size`` overrides the per-country config default.
+    """
+    household_size = avg_household_size or config.AVG_HOUSEHOLD_SIZE
+    districts = build_analysis_units(iso3, sheet_path)
+
+    groups = pd.DataFrame(worldpop.compute_zonal(districts, iso3)).set_index("boundary_code")
     table = districts.drop(columns="geometry").join(groups, on=CODE)
 
-    counts = building_counts(districts) if with_buildings else pd.Series(dtype=int)
+    counts = building_counts(districts, iso3) if with_buildings else pd.Series(dtype=int)
     table["building_count"] = table[CODE].map(counts).fillna(0).astype(int)
 
-    ensembled = table.apply(lambda row: _ensemble(row["total"], row["building_count"]),
-                            axis=1, result_type="expand")
+    ensembled = table.apply(
+        lambda row: _ensemble(row["total"], row["building_count"], household_size),
+        axis=1, result_type="expand")
     table[["population_estimate", "confidence", "method", "divergence"]] = ensembled
     table["population_estimate"] = table["population_estimate"].round().astype(int)
     table["estimated_households"] = table["building_count"]
@@ -80,9 +87,15 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--no-buildings", action="store_true",
                         help="skip the VIDA building cross-check (WorldPop only, much faster)")
+    parser.add_argument("--iso3", help="country ISO3 (default from PDI_ISO3 / config)")
+    parser.add_argument("--sheet", help="microplan boundary sheet; enables Voronoi catchment units")
+    parser.add_argument("--household-size", type=float,
+                        help="average household size (default from config per country)")
     args = parser.parse_args()
 
-    table, gdf = estimate(with_buildings=not args.no_buildings)
+    table, gdf = estimate(iso3=args.iso3, sheet_path=args.sheet,
+                          with_buildings=not args.no_buildings,
+                          avg_household_size=args.household_size)
     config.ESTIMATION_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     table.to_csv(config.DISTRICT_POPULATION_CSV, index=False, encoding="utf-8-sig")
     gdf.to_file(config.DISTRICT_POPULATION_GEOJSON, driver="GeoJSON")

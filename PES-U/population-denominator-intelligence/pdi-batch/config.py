@@ -1,40 +1,53 @@
 # Central configuration for the PDI batch pre-computation layer.
 
+import os
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DATA_SOURCE = REPO_ROOT / "Data_Source"
 
-WORLDPOP_DIR = DATA_SOURCE / "Chad" / "Worldpop"
-WORLDPOP_TOTAL_RASTER = WORLDPOP_DIR / "WorldPop_CHAD.tif"
-WORLDPOP_AGESEX_DIR = WORLDPOP_DIR / "Worlpop_age_and_sex"
-WORLDPOP_ISO = "tcd"
+# --- Country selection  --------
+COUNTRY_ISO3 = os.getenv("PDI_ISO3", "TCD").upper()
+TARGET_YEAR = int(os.getenv("PDI_YEAR", "2026"))
 
-# Engine boundary: full MSP health-district layer (126); swap in richer boundary data later on the same key.
-BOUNDARY_GEOJSON = REPO_ROOT / "pdi-boundary" / "output" / "chad_districts_msp.geojson"
-# VIDA combined Open Buildings (Google v3 + Microsoft + OSM), country-wide GeoParquet.
-BUILDINGS_PARQUET = DATA_SOURCE / "Chad" / "VIDA" / "TCD.parquet"
-BOUNDARY_CODE_FIELD = "Boundary_code"
+CACHE_DIR = Path(os.getenv("PDI_CACHE_DIR", str(REPO_ROOT / ".cache")))
 
-MSP_FACILITY_POINTS = (
-    DATA_SOURCE / "Chad" / "boundaries" / "msp_health_2020"
-    / "tcd_p_hlt_formationssanitaires_msp_2020"
-    / "tcd_p_hlt_formationsSanitaires_msp_2020.shp"
+GEOBOUNDARIES_API = "https://www.geoboundaries.org/api/current/gbOpen/{iso3}/{adm}/"
+GEOBOUNDARIES_ADM_LEVELS = ("ADM2", "ADM1", "ADM0")
+
+WORLDPOP_REST = "https://hub.worldpop.org/rest/data"
+WORLDPOP_AGE_ALIAS = "age_structures/G2_CN_Age_R25A_100m"
+WORLDPOP_TOTAL_ALIAS = "pop/G2_CN_POP_R25A_100m"
+WORLDPOP_ISO = COUNTRY_ISO3.lower() 
+
+VIDA_PARQUET_URL = (
+    "https://data.source.coop/vida/google-microsoft-osm-open-buildings"
+    "/geoparquet/by_country/country_iso={iso3}/{iso3}.parquet"
 )
+
+BOUNDARY_CODE_FIELD = "shapeID"
+BOUNDARY_NAME_FIELD = "shapeName"
 
 AVG_HOUSEHOLD_SIZE = 5.4
 
-COUNTRY = "TCD"
+SHEET_SHEET_NAME = 0                       # first sheet, or a sheet name
+SHEET_LAT_COLUMN = "Latitude"
+SHEET_LON_COLUMN = "Longitude"
+SHEET_CODE_COLUMN = "Service Boundary Code"
+# A point up to this far outside every district is snapped to the nearest; dropped beyond.
+CATCHMENT_SNAP_TOLERANCE_M = 2000
+
+DEFAULT_TARGET_GROUPS = ["total", "under5", "age_00", "age_01_04"]
+
+COUNTRY = COUNTRY_ISO3
 CAMPAIGN_ID = "POLIO_CHAD_2024"
 TENANT_ID = "default"
 WORLDPOP_VERSION = "2026-CN-100m-R2025A"
 OPEN_BUILDINGS_SOURCE = "vida-google-microsoft-osm"
 
-# Optional sanity check: bbox + known control totals (set either to None to skip).
-SANITY_BBOX = (14.98, 12.06, 15.13, 12.21)
-WORLDPOP_REFERENCE = {"total": 1_632_766, "under5": 305_893}
+SANITY_BBOX = None
+WORLDPOP_REFERENCE = None
 
-# "total" uses the all-ages raster; t_NN = both sexes, f_NN/m_NN = by sex, T_F/T_M = all ages by sex.
 TARGET_GROUPS = {
     "total": ["total"],
     "age_00": ["t_00"],
@@ -105,6 +118,7 @@ REGISTERED_SOURCE = "gps"
 GAP_GREEN_THRESHOLD = 0.85
 GAP_YELLOW_THRESHOLD = 0.50
 
+REGISTER_ISO3 = "TCD"
 REGISTER_DIR = DATA_SOURCE / "Synthetic data" / "synthetic_data"
 REGISTER_INDIVIDUALS_CSV = REGISTER_DIR / "individuals_flat.csv"
 REGISTER_HOUSEHOLD_SQL = REGISTER_DIR / "03_household_addresses.sql"

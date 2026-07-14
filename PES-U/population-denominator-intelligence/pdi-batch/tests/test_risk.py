@@ -37,7 +37,7 @@ def test_weights_sum_to_one():
 
 def test_factors_json_marks_provisional():
     scores = pd.Series({name: 0.5 for name in config.RISK_WEIGHTS})
-    factors = risk._factors_json(scores, building_density=12.0, distance_km=3.0)
+    factors = risk._factors_json(scores, config.RISK_WEIGHTS, building_density=12.0, distance_km=3.0)
     assert factors["past_performance"]["provisional"] is True
     assert factors["missed_children"]["provisional"] is True
     assert factors["population_gap"]["provisional"] is False

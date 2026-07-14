@@ -1,10 +1,11 @@
 docs
 
-Data_Source/Chad/Worldpop/*.tif
-Data_Source/Chad/Worldpop/Worlpop_age_and_sex/*.tif
-Data_Source/Chad/VIDA/*.parquet
+# Synthetic data is the only retained local source; all others fetched on demand.
 Data_Source/Synthetic data
-Data_Source/OSM-boundry/
+Data_Source/Chad/VIDA/*.parquet
+
+# Transient on-demand download cache (WorldPop rasters, boundary GeoJSON, etc.)
+.cache/
 
 pdi-boundary/output
 pdi-batch/output

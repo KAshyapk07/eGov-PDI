@@ -34,13 +34,10 @@ def test_clip_assigns_boundary_and_drops_outside(tmp_path, monkeypatch):
         geometry=[_square(0.5, 0.5), _square(0.6, 0.5), _square(2.5, 0.5), _square(0.7, 0.5)],
         crs=config.STORAGE_CRS,
     )
-    parquet = tmp_path / "buildings.parquet"
-    footprints.to_parquet(parquet)
-    monkeypatch.setattr(config, "BUILDINGS_PARQUET", parquet)
+    monkeypatch.setattr(buildings, "_read_in_bbox", lambda bounds, iso3=None: footprints)
 
     clipped = buildings.clip_to_boundaries(boundaries)
 
-    # B_A keeps the 0.9 google + null osm (the 0.4 low-confidence google is dropped); B_B keeps 1
     assert clipped.groupby("boundary_code").size().to_dict() == {"B_A": 2, "B_B": 1}
     assert {"area_m2", "centroid", "bf_source", "boundary_code"} <= set(clipped.columns)
     assert clipped.geometry.geom_type.eq("Polygon").all()

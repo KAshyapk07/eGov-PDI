@@ -10,6 +10,12 @@ _HOUSEHOLD_ROW = re.compile(
 )
 
 
+def has_register(iso3=None):
+    """True when the entered country has register data available (Chad only today)."""
+    iso3 = (iso3 or config.COUNTRY_ISO3).upper()
+    return iso3 == config.REGISTER_ISO3 and config.REGISTER_INDIVIDUALS_CSV.exists()
+
+
 def _points(frame, longitude, latitude):
     return gpd.GeoDataFrame(
         frame, geometry=gpd.points_from_xy(longitude, latitude), crs=config.STORAGE_CRS)
@@ -57,7 +63,9 @@ def registered_counts(boundaries):
 
 
 def main():
-    boundaries = gpd.read_file(config.BOUNDARY_GEOJSON)
+    from sources.boundaries import load_boundaries
+
+    boundaries = load_boundaries()
     counts = registered_counts(boundaries)
     print(f"districts with registrations: {len(counts):>8,}")
     print(f"registered individuals (assigned): {counts['registered_population'].sum():>8,}")
