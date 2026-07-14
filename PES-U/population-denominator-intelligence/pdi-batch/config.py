@@ -16,6 +16,12 @@ BOUNDARY_GEOJSON = REPO_ROOT / "pdi-boundary" / "output" / "chad_districts_msp.g
 BUILDINGS_PARQUET = DATA_SOURCE / "Chad" / "VIDA" / "TCD.parquet"
 BOUNDARY_CODE_FIELD = "Boundary_code"
 
+MSP_FACILITY_POINTS = (
+    DATA_SOURCE / "Chad" / "boundaries" / "msp_health_2020"
+    / "tcd_p_hlt_formationssanitaires_msp_2020"
+    / "tcd_p_hlt_formationsSanitaires_msp_2020.shp"
+)
+
 AVG_HOUSEHOLD_SIZE = 5.4
 
 COUNTRY = "TCD"
@@ -104,7 +110,23 @@ REGISTER_INDIVIDUALS_CSV = REGISTER_DIR / "individuals_flat.csv"
 REGISTER_HOUSEHOLD_SQL = REGISTER_DIR / "03_household_addresses.sql"
 REGISTER_AGE_REFERENCE = "2024-06-01"
 
+
+RISK_WEIGHTS = {
+    "population_gap": 0.30,
+    "past_performance": 0.25,
+    "facility_distance": 0.20,
+    "building_density": 0.15,
+    "missed_children": 0.10,
+}
+
+RISK_FACILITY_MAX_KM = 50
+
 RISK_MISSING_FACTOR_DEFAULT = 0.5
+RISK_PROVISIONAL_FACTORS = ("past_performance", "missed_children")
+# Priority bands on the 0-100 score.
+RISK_CRITICAL_THRESHOLD = 75
+RISK_HIGH_THRESHOLD = 50
+RISK_MEDIUM_THRESHOLD = 25
 
 SANITY_TOLERANCE = 0.02
 
