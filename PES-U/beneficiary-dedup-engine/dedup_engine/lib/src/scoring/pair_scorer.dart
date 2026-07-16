@@ -54,8 +54,21 @@ class PairScorer {
     final features = <String, double>{};
     var composite = 0.0;
 
+    // Track weight of fields skipped due to missing data so we can
+    // redistribute proportionally to the fields that were compared.
+    var skippedWeight = 0.0;
+    var activeWeight = 0.0;
+
     // ── Single-column match fields ──────────────────────────────────────
     for (final f in config.matchFields) {
+      final va = a[f.column]?.toString().trim() ?? '';
+      final vb = b[f.column]?.toString().trim() ?? '';
+      if (va.isEmpty || vb.isEmpty) {
+        // Skip this field — don't penalise for missing data.
+        features['${f.column}:${f.strategy.name}'] = 0.0;
+        skippedWeight += f.weight;
+        continue;
+      }
       final s = applyStrategy(
         f.strategy,
         a[f.column],
@@ -64,6 +77,7 @@ class PairScorer {
       );
       features['${f.column}:${f.strategy.name}'] = s;
       composite += s * f.weight;
+      activeWeight += f.weight;
     }
 
     // ── Cross-field comparisons (name-order swap etc.) ───────────────────
@@ -77,6 +91,7 @@ class PairScorer {
       );
       features['${f.columnA}x${f.columnB}:${f.strategy.name}'] = s;
       composite += s * f.weight;
+      activeWeight += f.weight;
     }
 
     // ── Proximity (lat/lon pairs) ───────────────────────────────────────
@@ -105,11 +120,19 @@ class PairScorer {
       );
       features['${f.latColumn}:proximity'] = s;
       composite += s * f.weight;
+      activeWeight += f.weight;
 
       // Tight same-dwelling score, used by the sibling guard.
       final h = sameHouseholdScore(latA, lonA, latB, lonB,
           acc1: accA, acc2: accB);
       if (h > householdScore) householdScore = h;
+    }
+
+    // ── Redistribute skipped weight ─────────────────────────────────────
+    // When fields are missing, scale up the active fields proportionally
+    // so the maximum achievable score remains 1.0.
+    if (skippedWeight > 0 && activeWeight > 0) {
+      composite = composite / activeWeight * (activeWeight + skippedWeight);
     }
 
     composite = _round4(composite);
