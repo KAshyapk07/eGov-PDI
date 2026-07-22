@@ -143,7 +143,13 @@ final config = DedupConfig(
   shortCircuits: [ShortCircuitRule(column: 'mobile_number')],
 
   // Different gender -> cannot be the same person.
-  mismatchRules: [MismatchRule(column: 'gender')],
+  // Use valueMap when the DB stores enums as integers but incoming data uses strings.
+  mismatchRules: [
+    MismatchRule(
+      column: 'gender',
+      valueMap: {'0': 'male', '1': 'female', '2': 'other'},
+    ),
+  ],
 
   // Sibling detection.
   siblingGuard: SiblingGuard(
@@ -202,6 +208,26 @@ MatchField(
 Weights across all match fields, cross fields, and proximity fields should sum
 to approximately 1.0.
 
+#### Value Mapping
+
+When a column stores values in a different format than the incoming record (e.g.
+an ORM stores enums as integers while the form data uses strings), use
+`valueMap` to normalize both sides to a canonical form before comparison:
+
+```dart
+MatchField(
+  column: 'risk_level',
+  strategy: Strategy.exact,
+  weight: 0.10,
+  valueMap: {'0': 'low', '1': 'medium', '2': 'high'},
+)
+```
+
+Keys must be **lowercase strings**. The engine converts each raw value to a
+lowercase string, looks it up in the map, and uses the mapped value if found.
+Values not in the map are passed through as-is. This keeps the config
+`const`-compatible (no callbacks needed).
+
 ### Cross-Field Comparisons
 
 `CrossMatchField` compares **two different columns** across two records, useful
@@ -240,6 +266,8 @@ score**. Useful for unique identifiers like phone numbers.
 ShortCircuitRule(column: 'mobile_number')
 // Optionally specify the verdict (default: Verdict.duplicate)
 ShortCircuitRule(column: 'national_id', verdict: Verdict.duplicate)
+// Use valueMap when stored and incoming formats differ
+ShortCircuitRule(column: 'status', valueMap: {'0': 'active', '1': 'inactive'})
 ```
 
 ### Mismatch Rules
@@ -250,6 +278,14 @@ means it cannot be the same person.
 
 ```dart
 MismatchRule(column: 'gender')
+
+// When the DB stores gender as an integer enum but incoming data uses strings:
+MismatchRule(
+  column: 'gender',
+  valueMap: {'0': 'male', '1': 'female', '2': 'other'},
+)
+// DB value 0 -> "male", incoming "MALE" -> "male" -> they match (no mismatch).
+// DB value 0 -> "male", incoming "FEMALE" -> "female" -> mismatch -> Verdict.clear.
 ```
 
 ### Sibling Guard

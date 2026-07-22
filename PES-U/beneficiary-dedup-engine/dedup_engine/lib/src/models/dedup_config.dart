@@ -66,11 +66,24 @@ class MatchField {
   /// decays to 0.
   final double? maxDelta;
 
+  /// Optional mapping from raw stored values to canonical forms.
+  ///
+  /// Keys should be **lowercase**. Before comparison the engine converts the
+  /// raw value to a lowercase string and looks it up here. If found, the
+  /// mapped value is used; otherwise the raw value is passed through as-is.
+  ///
+  /// Example — Drift stores gender as an integer enum:
+  /// ```dart
+  /// valueMap: {'0': 'male', '1': 'female', '2': 'other'},
+  /// ```
+  final Map<String, String>? valueMap;
+
   const MatchField({
     required this.column,
     required this.strategy,
     required this.weight,
     this.maxDelta,
+    this.valueMap,
   });
 }
 
@@ -120,9 +133,14 @@ class ShortCircuitRule {
   final String column;
   final Verdict verdict;
 
+  /// Optional mapping from raw stored values to canonical forms.
+  /// See [MatchField.valueMap] for details.
+  final Map<String, String>? valueMap;
+
   const ShortCircuitRule({
     required this.column,
     this.verdict = Verdict.duplicate,
+    this.valueMap,
   });
 }
 
@@ -133,7 +151,19 @@ class ShortCircuitRule {
 class MismatchRule {
   final String column;
 
-  const MismatchRule({required this.column});
+  /// Optional mapping from raw stored values to canonical forms.
+  /// See [MatchField.valueMap] for details.
+  ///
+  /// Example — compare gender stored as integer with gender as string:
+  /// ```dart
+  /// MismatchRule(
+  ///   column: 'gender',
+  ///   valueMap: {'0': 'male', '1': 'female', '2': 'other'},
+  /// ),
+  /// ```
+  final Map<String, String>? valueMap;
+
+  const MismatchRule({required this.column, this.valueMap});
 }
 
 /// A guard that DEMOTES a duplicate verdict to review when a suspicious

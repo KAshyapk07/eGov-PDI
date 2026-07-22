@@ -20,8 +20,8 @@ class PairScorer {
 
     // ── Rule: hard mismatch (e.g. different gender) ─────────────────────
     for (final rule in config.mismatchRules) {
-      final va = a[rule.column]?.toString().trim().toLowerCase() ?? '';
-      final vb = b[rule.column]?.toString().trim().toLowerCase() ?? '';
+      final va = _mapped(a[rule.column], rule.valueMap);
+      final vb = _mapped(b[rule.column], rule.valueMap);
       if (va.isNotEmpty && vb.isNotEmpty && va != vb) {
         return DedupResult(
           idA: idA,
@@ -36,8 +36,8 @@ class PairScorer {
 
     // ── Rule: short circuit (e.g. identical mobile number) ──────────────
     for (final rule in config.shortCircuits) {
-      final va = a[rule.column]?.toString().trim() ?? '';
-      final vb = b[rule.column]?.toString().trim() ?? '';
+      final va = _mapped(a[rule.column], rule.valueMap);
+      final vb = _mapped(b[rule.column], rule.valueMap);
       if (va.isNotEmpty && vb.isNotEmpty && va == vb) {
         return DedupResult(
           idA: idA,
@@ -61,8 +61,10 @@ class PairScorer {
 
     // ── Single-column match fields ──────────────────────────────────────
     for (final f in config.matchFields) {
-      final va = a[f.column]?.toString().trim() ?? '';
-      final vb = b[f.column]?.toString().trim() ?? '';
+      final valA = f.valueMap != null ? _mapped(a[f.column], f.valueMap) : a[f.column];
+      final valB = f.valueMap != null ? _mapped(b[f.column], f.valueMap) : b[f.column];
+      final va = valA?.toString().trim() ?? '';
+      final vb = valB?.toString().trim() ?? '';
       if (va.isEmpty || vb.isEmpty) {
         // Skip this field — don't penalise for missing data.
         features['${f.column}:${f.strategy.name}'] = 0.0;
@@ -71,8 +73,8 @@ class PairScorer {
       }
       final s = applyStrategy(
         f.strategy,
-        a[f.column],
-        b[f.column],
+        valA,
+        valB,
         maxDelta: f.maxDelta,
       );
       features['${f.column}:${f.strategy.name}'] = s;
@@ -175,6 +177,17 @@ class PairScorer {
       flags: flags,
       matchedRecord: b,
     );
+  }
+
+  /// Applies a [valueMap] to a raw value: converts to lowercase string and
+  /// looks it up; returns the mapped value if found, or the lowercased
+  /// original otherwise.
+  static String _mapped(dynamic v, Map<String, String>? valueMap) {
+    final raw = v?.toString().trim() ?? '';
+    if (raw.isEmpty) return '';
+    final lower = raw.toLowerCase();
+    if (valueMap == null) return lower;
+    return valueMap[lower] ?? lower;
   }
 
   static double? _toDouble(dynamic v) {
