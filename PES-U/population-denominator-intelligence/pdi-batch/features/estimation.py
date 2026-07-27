@@ -18,10 +18,9 @@ IDENTITY_COLUMNS = [
 ]
 
 
-def building_counts(boundaries, iso3=None):
-    """Buildings assigned to each unit, as a count keyed by boundary code."""
-    clipped = buildings.clip_to_boundaries(boundaries, iso3)
-    return clipped.groupby("boundary_code").size()
+def building_footprints(boundaries, iso3=None):
+    """Building footprints assigned to each unit, tagged with their boundary code."""
+    return buildings.clip_to_boundaries(boundaries, iso3)
 
 
 def _ensemble(total, count, household_size):
@@ -42,19 +41,24 @@ def _ensemble(total, count, household_size):
     return population, round(confidence, 3), method, round(divergence, 3)
 
 
-def estimate(iso3=None, sheet_path=None, with_buildings=True, avg_household_size=None):
-    """Return (table, gdf): per-unit estimates as a DataFrame and a GeoDataFrame.
-
-    Units are ADM2 districts, or Voronoi catchment cells where ``sheet_path`` is
-    given. ``avg_household_size`` overrides the per-country config default.
-    """
+def estimate(iso3=None, sheet_path=None, with_buildings=True, avg_household_size=None,
+             units=None, year=None):
     household_size = avg_household_size or config.AVG_HOUSEHOLD_SIZE
-    districts = build_analysis_units(iso3, sheet_path)
+    districts = units if units is not None else build_analysis_units(iso3, sheet_path)
 
-    groups = pd.DataFrame(worldpop.compute_zonal(districts, iso3)).set_index("boundary_code")
+    groups = pd.DataFrame(worldpop.compute_zonal(districts, iso3, year)).set_index("boundary_code")
     table = districts.drop(columns="geometry").join(groups, on=CODE)
 
-    counts = building_counts(districts, iso3) if with_buildings else pd.Series(dtype=int)
+    # Buildings are a best-effort cross-check: the VIDA footprints are streamed from
+    # a remote parquet that can be slow or briefly unavailable. A failure there must
+    # not sink the whole run - fall back to WorldPop-only, which the ensemble handles.
+    footprints = None
+    if with_buildings:
+        try:
+            footprints = building_footprints(districts, iso3)
+        except Exception as exc:  # noqa: BLE001
+            print(f"WARNING buildings unavailable, using WorldPop only: {exc}", flush=True)
+    counts = footprints.groupby("boundary_code").size() if footprints is not None else pd.Series(dtype=int)
     table["building_count"] = table[CODE].map(counts).fillna(0).astype(int)
 
     ensembled = table.apply(
@@ -80,6 +84,8 @@ def estimate(iso3=None, sheet_path=None, with_buildings=True, avg_household_size
         table.merge(districts[[CODE, "geometry"]], on=CODE),
         geometry="geometry", crs=config.STORAGE_CRS,
     )
+
+    gdf.attrs["building_footprints"] = footprints
     return table, gdf
 
 
@@ -91,11 +97,13 @@ def main():
     parser.add_argument("--sheet", help="microplan boundary sheet; enables Voronoi catchment units")
     parser.add_argument("--household-size", type=float,
                         help="average household size (default from config per country)")
+    parser.add_argument("--year", type=int,
+                        help="WorldPop population year (default from PDI_YEAR / config)")
     args = parser.parse_args()
 
     table, gdf = estimate(iso3=args.iso3, sheet_path=args.sheet,
                           with_buildings=not args.no_buildings,
-                          avg_household_size=args.household_size)
+                          avg_household_size=args.household_size, year=args.year)
     config.ESTIMATION_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     table.to_csv(config.DISTRICT_POPULATION_CSV, index=False, encoding="utf-8-sig")
     gdf.to_file(config.DISTRICT_POPULATION_GEOJSON, driver="GeoJSON")

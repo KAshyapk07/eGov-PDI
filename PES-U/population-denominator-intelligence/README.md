@@ -6,9 +6,10 @@ building-footprint data, compares that expectation against who was actually regi
 and surfaces the coverage gaps, unmapped settlements, and risk hotspots that a manual microplan
 cannot see.
 
-The current reference deployment targets **Chad**, validating the national ITN (insecticide-treated
-net) microplan across all **126 MSP health districts**, with a registered-beneficiary sample in
-N'Djamena.
+PDI is **country-agnostic**: you give it an ISO3 country code, and it fetches every input it needs
+on demand (boundaries, population rasters, building footprints). Nothing is pre-downloaded and
+nothing is Chad-specific. Chad (`TCD`) is simply the reference deployment, because it is the country
+we have a registered-beneficiary sample for.
 
 ---
 
@@ -25,213 +26,383 @@ If 800 people are registered out of 1,200 who actually live there:
 ```
 
 PDI supplies an **independent denominator** derived from WorldPop population rasters and Open
-Buildings footprints, then does the gap arithmetic per district so supervisors can act on the
+Buildings footprints, then does the gap arithmetic per boundary so supervisors can act on the
 difference.
 
 ---
 
 ## 2. Architecture at a glance
 
-PDI is a **batch pre-computation layer**. Heavy geospatial math (raster zonal statistics, spatial
-joins, clustering) runs offline in Python and writes compact, indexed results. The serving path only
-ever reads those pre-computed results — no raster math at request time. This mirrors DIGIT's
-convention of Python for offline analytics and Java Spring Boot for the request-serving API.
+Three tiers, in the DIGIT convention: **Python for offline geospatial analytics, Java Spring Boot for
+the request-serving API, React for presentation.** Heavy raster and vector math never runs on a
+request thread — the Java service shells out to the Python engine as an *asynchronous job*, persists
+the result into PostGIS, and serves every repeat from cache.
 
 ```mermaid
 graph TB
-    subgraph Sources["Data sources (open + HCM)"]
-        WP["WorldPop rasters<br/>GeoTIFF, 100 m<br/>total + age/sex bands"]
-        OB["Open Buildings (VIDA)<br/>GeoParquet footprints<br/>Google v3 + Microsoft + OSM"]
-        MSP["MSP health boundaries<br/>districts, provinces, facilities"]
-        ITN["ITN microplan roster<br/>Chad boundary workbook"]
-        REG["HCM register (sample)<br/>individuals + households"]
+    subgraph Sources["Open data, fetched on demand by ISO3"]
+        GB["geoBoundaries API<br/>ADM2 / ADM1 / ADM0 polygons"]
+        WP["WorldPop REST<br/>100 m GeoTIFF<br/>total + age/sex bands"]
+        VIDA["VIDA Open Buildings<br/>GeoParquet footprints<br/>Google v3 + Microsoft + OSM"]
     end
 
-    subgraph Boundary["pdi-boundary  (reconciliation)"]
-        RECON["Fuzzy name match<br/>microplan vs MSP districts"]
-        ENGINE_B["chad_districts_msp.geojson<br/>126 districts, stable Boundary_code"]
+    subgraph Local["Optional local inputs"]
+        SHEET["Microplan sheet (.xlsx)<br/>facility lat/lon + boundary codes"]
+        REG["HCM register sample<br/>individuals + households"]
     end
 
-    subgraph Batch["pdi-batch  (intelligence engine, Python)"]
-        F1["Feature 1<br/>Population estimation"]
-        F2["Feature 2<br/>Gap detection"]
-        F4["Feature 4<br/>Invisible settlements"]
-        F5["Feature 5<br/>Risk scoring"]
+    subgraph Engine["pdi-batch — intelligence engine (Python)"]
+        F1["Feature 1 · estimation"]
+        F2["Feature 2 · gap"]
+        F4["Feature 4 · invisible settlements"]
+        F5["Feature 5 · risk"]
+        TGT["features.targets<br/>orchestrator + CLI"]
     end
 
-    subgraph Store["Storage layer"]
-        FILES["CSV + GeoJSON outputs<br/>(current)"]
-        PG[("PostGIS<br/>population_estimate<br/>gap_report<br/>invisible_settlement<br/>building_footprint")]
+    subgraph Service["pdi-service — population-denominator-service (Java 21 / Spring Boot 3.4)"]
+        JOB["Async job runner<br/>PythonEngineRunner"]
+        CACHE["Result cache<br/>engine_result_cache"]
+        API["REST API<br/>/population/v1/**"]
     end
 
-    subgraph Serve["Serving + presentation"]
-        API["PDI API service<br/>(Java Spring Boot — planned)"]
-        WEBDEMO["Demo dashboard (React)<br/>Feature 3: visualization"]
-        DIGIT["DIGIT HCM micro-frontend<br/>react/ module"]
+    PG[("PostgreSQL 15 + PostGIS 3.4<br/>settlement_boundary · population_estimate<br/>gap_report · invisible_settlement<br/>building_footprint · engine_result_cache")]
+
+    subgraph UI["Presentation"]
+        DEMO["demo/ — React + Leaflet<br/>Feature 3 dashboard"]
+        DIGIT["react/ — DIGIT HCM<br/>micro-frontend module"]
     end
 
+    GB --> F1
     WP --> F1
-    OB --> F1
-    OB --> F4
-    MSP --> RECON
-    ITN --> RECON
-    RECON --> ENGINE_B
-    ENGINE_B --> F1 & F2 & F4 & F5
+    VIDA --> F1 & F4
+    SHEET --> TGT
     REG --> F2 & F4
-    MSP --> F5
-
     F1 --> F2 --> F5
-    F1 & F2 & F4 & F5 --> FILES
-    FILES -. "loader (planned)" .-> PG
-    PG -. read .-> API
-    FILES --> WEBDEMO
-    API -. serves .-> DIGIT
+    F1 & F2 & F4 & F5 --> TGT
+    TGT -->|persistence/store.py| PG
+    JOB --> TGT
+    API --> JOB
+    API --> CACHE --> PG
+    API -->|JPA read| PG
+    DEMO --> API
+    DIGIT -. planned .-> API
 ```
 
-**Legend:** solid arrows are implemented today; dotted arrows (`PostGIS loader`, `Java API`) are the
-integration work still to be built (see [§9](#9-digit-health-integration-current-state-and-plan)).
+**Read path vs. write path.** The engine writes; the API reads. `pdi-batch/persistence/store.py`
+upserts every feature output into PostGIS at the end of a run, and `DashboardController` serves
+dashboard aggregates straight out of those tables through JPA — no raster math at request time.
 
 ---
 
 ## 3. Repository layout
 
-| Path | What it is | Status |
-|------|------------|--------|
-| `pdi-boundary/` | Reconciles the ITN microplan roster against MSP district polygons and emits the common **engine boundary** every downstream feature keys off. | Working |
-| `pdi-batch/` | The intelligence engine: five features over the engine boundary, plus the data-source adapters. | Working |
-| `pdi-batch/sources/` | Adapters for WorldPop, Open Buildings, boundaries, the HCM register, and facilities. | Working |
-| `pdi-batch/features/` | Feature 1 estimation, 2 gap, 4 invisible, 5 risk. | Working |
-| `pdi-batch/output/` | Pre-computed CSV + GeoJSON per feature (gitignored). | Generated |
-| `db/` | PostGIS schema as Flyway migrations (`V1`–`V4`) plus init SQL. | Schema ready |
-| `react/` | DIGIT HCM micro-frontend module (dashboard shell + `PDIService` API client). | Scaffold |
-| `demo/` | Standalone React + Leaflet demo that renders the pre-computed GeoJSON (Feature 3). | Working, gitignored |
-| `Data_Source/` | Input rasters, footprints, boundaries, register (large files gitignored). | Local |
-| `docker-compose.yml` | PostGIS 15 / PostGIS 3.4, plus Redis and Kafka under the `full` profile. | Working |
+| Path | What it is |
+|------|-----------|
+| `pdi-batch/` | The Python intelligence engine. Source adapters, five features, PostGIS persistence, tests. |
+| `pdi-batch/config.py` | Single config module: country, target cohorts, thresholds, CRS, risk weights, paths. |
+| `pdi-batch/sources/` | On-demand adapters: `remote` (download + cache), `boundaries`, `worldpop`, `buildings`, `catchments`, `register`. |
+| `pdi-batch/features/` | `estimation` (F1), `gap` (F2), `invisible` (F4), `risk` (F5), `targets` (orchestrator + CLI entry point). |
+| `pdi-batch/persistence/store.py` | Upserts engine output into the PostGIS tables. |
+| `pdi-batch/tests/` | `pytest` suite over sources and features. |
+| `pdi-service/` | `population-denominator-service` — Spring Boot 3.4 / Java 21 API that drives the engine and serves results. |
+| `db/migration/` | Flyway migrations `V1`–`V5` (PostGIS extensions, boundaries, PDI tables, risk-config seed, result cache). |
+| `db/init/` | SQL applied automatically on first container start (extensions). |
+| `demo/` | React + Leaflet dashboard (Feature 3) driven entirely by the service API. |
+| `react/` | DIGIT HCM micro-frontend module scaffold (`digit-ui-module-health-pdi`). |
+| `Data_Source/` | Local-only inputs: the synthetic Chad register and microplan workbooks. |
+| `docker-compose.yml` | PostGIS 15/3.4, plus Redis and Kafka behind the `full` profile. |
 
 ---
 
-## 4. The two pipelines
+## 4. Prerequisites
 
-### 4.1 Boundary reconciliation (`pdi-boundary`)
+| Tool | Version | Needed for |
+|------|---------|-----------|
+| Python | 3.12 | the batch engine |
+| Java JDK | 21 | the Spring Boot service |
+| Maven | 3.9+ (or the bundled `mvnw`) | building the service |
+| Docker + Compose | any recent | PostGIS, Flyway |
+| Node.js | 18+ | the demo dashboard |
 
-Chad has two district vocabularies that do not share codes: the **ITN microplan** roster (campaign
-targets) and the **MSP 2020 health districts** (authoritative polygons). `reconcile/districts.py`
-fuzzy-matches district names (normalized, `difflib` ratio ≥ 0.82) and produces the engine boundary:
+Disk and network: the first run for a country downloads WorldPop rasters (~37 files) and the VIDA
+building parquet. For Chad that is a few GB and can take from minutes to hours on a slow link.
+Everything lands in `.cache/<ISO3>/` and is reused forever after.
 
-- **Every** MSP health district is kept (126 rows), keyed by a stable `Boundary_code` derived from the
-  MSP pcode (`MSP_<pcode>`, de-duplicated).
-- Where a microplan name lines up, its code/targets are attached as optional columns; otherwise they
-  are left null. This lets the engine run over the complete MSP layer today while richer microplan
-  geometry can be joined later on the same key.
+---
 
-Output: `pdi-boundary/output/chad_districts_msp.geojson` — the single boundary contract consumed by
-every `pdi-batch` feature (`config.BOUNDARY_GEOJSON`, `config.BOUNDARY_CODE_FIELD = "Boundary_code"`).
+## 5. Getting started (full, from a clean clone)
 
-### 4.2 Intelligence engine (`pdi-batch`)
+The order matters: **database → Python engine → Java service → dashboard.** Each step below is
+independently verifiable, so you can stop and check before moving on.
 
-Five features, each a standalone module with a `main()` (runnable via `python -m features.<name>`)
-and a callable `build()/estimate()/detect()` returning `(table, gdf)`. Features chain through files:
-estimation feeds gap, gap feeds risk.
+### 5.1 Configure environment
 
-```mermaid
-flowchart LR
-    B["load_boundaries()<br/>126 districts"] --> E["Feature 1<br/>estimation"]
-    E -->|district_population.geojson| G["Feature 2<br/>gap"]
-    R["register (HCM)"] --> G
-    G -->|gap_report.geojson| K["Feature 5<br/>risk"]
-    FAC["facilities (MSP)"] --> K
-    B --> I["Feature 4<br/>invisible"]
-    OB["buildings"] --> I
-    R --> I
-    K -->|gap_report.* enriched| OUT1["output/gap"]
-    E --> OUT2["output/estimation"]
-    I --> OUT3["output/invisible"]
+```bash
+cd PES-U/population-denominator-intelligence
+cp .env.example .env
 ```
 
+Open `.env` and set the Postgres credentials. The defaults in `.env.example` (`pdi` / `pdi` / `pdi`)
+line up with what `docker-compose.yml` creates and what `application.yml` expects, so you can leave
+them alone for local work:
+
+```ini
+PDI_ISO3=TCD                 # default country for the batch CLI
+PDI_YEAR=2026                # default projection year
+
+POSTGRES_DB=pdi
+POSTGRES_USER=pdi
+POSTGRES_PASSWORD=pdi
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5432
+
+DATABASE_URL=postgresql://pdi:pdi@localhost:5432/pdi
+```
+
+`DATABASE_URL` is what the **Python** side reads (`pdi-batch/db.py`); the individual `POSTGRES_*`
+variables are what **docker-compose** and the **Java** service read. Keep the two consistent.
+
+### 5.2 Start the database
+
+```bash
+docker compose up -d postgis
+```
+
+This starts PostgreSQL 15 with PostGIS 3.4 on port 5432, with a named volume `pdi_pgdata` so your
+data survives container restarts. On first start it runs `db/init/01_extensions.sql`, which enables
+`postgis`, `postgis_raster` and `pg_trgm`.
+
+Add Redis and Kafka only if you need them (they are provisioned for future caching/eventing and are
+not used by the current code path):
+
+```bash
+docker compose --profile full up -d
+```
+
+Verify the container is healthy:
+
+```bash
+docker compose ps
+docker exec -it pdi-postgis psql -U pdi -d pdi -c "SELECT postgis_full_version();"
+```
+
+### 5.3 Apply the database schema (Flyway)
+
+The schema lives in `db/migration/` as five migrations:
+
+| Migration | Creates |
+|-----------|---------|
+| `V1__extensions.sql` | `postgis`, `postgis_raster`, `pg_trgm` extensions |
+| `V2__settlement_boundary.sql` | `settlement_boundary` + GiST index on the polygon |
+| `V3__pdi_tables.sql` | `population_estimate`, `gap_report`, `invisible_settlement`, `building_footprint`, `risk_score_config` |
+| `V4__risk_config_seed.sql` | default risk weights for the scoring model |
+| `V5__engine_result_cache.sql` | `engine_result_cache` — the whole-run result cache |
+
+**Option A — Flyway via Docker (no local install).** Run from the project root:
+
+```bash
+docker run --rm --network host \
+  -v "$PWD/db/migration:/flyway/sql" \
+  flyway/flyway:10 \
+  -url=jdbc:postgresql://localhost:5432/pdi \
+  -user=pdi -password=pdi \
+  -baselineOnMigrate=true -baselineVersion=0 \
+  migrate
+```
+
+On Windows PowerShell, substitute `${PWD}` for `$PWD`. If `--network host` is unavailable (Docker
+Desktop on Windows/macOS), use `-url=jdbc:postgresql://host.docker.internal:5432/pdi` and drop
+`--network host`.
+
+**Option B — local Flyway CLI.** Copy the config template and fill in your password:
+
+```bash
+cp db/flyway.conf.example db/flyway.conf
+# edit db/flyway.conf, then:
+flyway -configFiles=db/flyway.conf migrate
+```
+
+`db/flyway.conf` is gitignored because it holds a password — only the `.example` is tracked.
+
+Verify the schema landed:
+
+```bash
+docker exec -it pdi-postgis psql -U pdi -d pdi -c "\dt"
+```
+
+You should see `settlement_boundary`, `population_estimate`, `gap_report`, `invisible_settlement`,
+`building_footprint`, `risk_score_config`, `engine_result_cache` and Flyway's own
+`flyway_schema_history`.
+
+### 5.4 Set up the Python engine
+
+```bash
+python -m venv .venv
+
+source .venv/Scripts/activate      # Windows, Git Bash
+# .venv\Scripts\Activate.ps1       # Windows, PowerShell
+# source .venv/bin/activate        # Linux / macOS
+
+pip install -r requirements.txt
+```
+
+Check the database connection from Python:
+
+```bash
+python pdi-batch/db.py            # prints: SELECT 1 -> 1
+```
+
+### 5.5 Run the Java API service
+
+```bash
+cd pdi-service
+mvn spring-boot:run
+```
+
+### 5.6 Run the demo dashboard
+
+```bash
+cd demo
+npm install
+npm run dev
+```
+
+Opens **http://localhost:5180**. It calls the service at `http://localhost:8080` by default; point it
+elsewhere with `VITE_API_BASE`.
+
+The service allows CORS from `http://localhost:*` and `http://127.0.0.1:*` out of the box
+(`pdi.cors.allowed-origin-patterns`).
+
+### 5.7 End-to-end smoke test
+
+With the database, the service and the dashboard all up:
+
+1. Open the dashboard, pick **Chad (TCD)**, optionally upload a microplan workbook, and hit compute.
+2. The job streams progress (`PROGRESS <pct>` lines from the engine are parsed into the progress bar).
+   First run for a country downloads rasters; later runs are near-instant from the result cache.
+3. When it completes you get the coverage map, catchments, invisible settlements and risk tabs.
+
 ---
 
-## 5. Data-source interaction: WorldPop and Open Buildings
+## 6. API reference
 
-These two datasets are the heart of the denominator. Here is exactly how each is read and turned into
-numbers.
+All endpoints are under `/population/v1` and tenant-scoped (`tenantId`, default `default`).
 
-### 5.1 WorldPop (population raster) — `sources/worldpop.py`
+### Compute (async job over the Python engine)
 
-WorldPop ships one all-ages raster plus per-age/sex 100 m GeoTIFF bands for Chad (`tcd_<sex>_<age>_…`).
-For each district polygon the engine computes **coverage-weighted zonal sums**:
+| Method | Path | Purpose |
+|--------|------|---------|
+| `POST` | `/targets/_compute` | Submit a compute job (multipart). Returns `jobId` + `statusUrl`. |
+| `GET` | `/targets/{jobId}/_status` | `PENDING` / `RUNNING` / `DONE` / `FAILED`, with message + percent. |
+| `GET` | `/targets/{jobId}/_download` | Filled target workbook (`.xlsx`, sheet runs only). |
+| `GET` | `/targets/{jobId}/_geojson` | Whole-country boundary polygons + targets + gap + risk. |
+| `GET` | `/targets/{jobId}/_catchments` | Voronoi catchment cells (sheet runs only). |
+| `GET` | `/targets/{jobId}/_buildings` | Catchment building points tagged by facility. |
+| `GET` | `/targets/{jobId}/_settlements` | Invisible-settlement clusters. |
+| `GET` | `/targets/{jobId}/_stats` | Dashboard summary JSON. |
 
-1. Read only the raster window covering the polygon bounding box (`rasterio`).
+`_compute` parameters: `iso3` (required), `sheet` (file), `year`, `householdSize`, `groups`,
+`withBuildings` (default `true`), `campaignId`, `tenantId`, `force` (default `false`).
+
+### Dashboard (read-only, straight from PostGIS via JPA)
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/dashboard/_stats?campaignId=&boundaryCode=&tenantId=` | Summary totals, gap distribution, risk distribution, top gaps. |
+| `POST` | `/gap/_search?tenantId=` | Paged gap-report search; body is `{"gapSearchCriteria": {"campaignId": "..."}}`. |
+
+---
+
+## 7. Caching — two independent layers
+
+PDI caches at two levels, and they solve different problems. Both are safe to delete.
+
+**1. Download cache — `.cache/<ISO3>/` (disk).** Raw WorldPop GeoTIFFs, geoBoundaries GeoJSON and the
+VIDA parquet, streamed once and reused. This is the expensive one: it is what turns a multi-hour
+first run into a two-minute rerun. Deleting it forces a re-download.
+
+**2. Result cache — `engine_result_cache` (Postgres).** A whole engine run is deterministic for a
+given country and parameter set, so the service hashes the normalized request (ISO3, year, household
+size, groups, buildings flag, uploaded-sheet SHA-256) and stores the complete response plus every
+artifact against that key. A repeat request is served from Postgres without touching Python at all.
+
+`force=true` on `_compute` skips the *lookup* but still writes its result back, so a forced recompute
+refreshes the existing entry rather than duplicating it or leaving it stale. If Postgres is
+unreachable the cache disables itself for the process and every request simply runs the engine.
+
+---
+
+## 8. How the engine works
+
+### 8.1 Everything is fetched by ISO3
+
+`sources/remote.py` is the single download choke point. Given a country code it resolves and streams:
+
+- **Boundaries** — geoBoundaries `gbOpen` API, trying `ADM2` first and falling back to `ADM1`, then
+  `ADM0`. Codes come from `shapeID`, names from `shapeName`.
+- **WorldPop** — the REST catalogue, resolving the constrained 100 m total-population and age/sex
+  structure releases for the requested year.
+- **Buildings** — the VIDA combined Open Buildings GeoParquet for that country, read directly over
+  HTTPS with bounding-box pushdown.
+
+Downloads emit `PROGRESS <pct> …` lines, which the Java service parses into the UI progress bar.
+
+### 8.2 WorldPop → population (`sources/worldpop.py`)
+
+For each boundary polygon the engine computes a **coverage-weighted zonal sum**:
+
+1. Read only the raster window covering the polygon's bounding box.
 2. **Sub-pixel supersampling** (`COVERAGE_SUBSAMPLE = 10`): each 100 m pixel is diced 10×10, the
-   polygon is rasterized onto the fine grid, and the fraction of each coarse pixel actually inside the
-   polygon becomes its weight. `population = Σ (pixel_value × covered_fraction)`.
-3. This coverage-weighting (rather than naive pixel-center-in-polygon) is what fixed the N'Djamena
-   sub-pixel undercount — small dense urban catchments were previously reading ~0.
+   polygon is rasterized onto that fine grid, and the fraction of each coarse pixel genuinely inside
+   the polygon becomes its weight. `population = Σ (pixel_value × covered_fraction)`.
+3. Coverage weighting — rather than naive pixel-centre-in-polygon — is what fixed the N'Djamena
+   sub-pixel undercount, where small dense urban catchments were reading close to zero.
 
-The same routine runs for **every configured target group** in `config.TARGET_GROUPS`, giving each
-district a selectable denominator for **60+ cohorts**: `total`, `under5`, `under15`,
-`women_15_49`, single age bands (`age_00` … `age_90_plus`), and each of those split by sex. A
-bounding-box **sanity check** compares measured totals against WorldPop control figures within a 2%
-tolerance before the run is trusted.
+The same routine runs for every entry in `config.TARGET_GROUPS`, giving each boundary a selectable
+denominator across **60+ cohorts**: `total`, `under5`, `under15`, `women_15_49`, every five-year band
+`age_00` … `age_90_plus`, and each of those split by sex.
 
 ```mermaid
 flowchart LR
-    P["District polygon"] --> W["Read raster window"]
+    P["Boundary polygon"] --> W["Read raster window"]
     W --> S["Supersample pixels 10x10"]
     S --> C["Rasterize polygon -> coverage fraction"]
     C --> M["Sum value x fraction"]
-    M --> D["Population per target group<br/>(total, under5, women_15_49, ...)"]
+    M --> D["Population per cohort<br/>total, under5, women_15_49, ..."]
 ```
 
-### 5.2 Open Buildings via VIDA (footprints) — `sources/buildings.py`
+### 8.3 Open Buildings → households (`sources/buildings.py`)
 
-Building footprints come from the **VIDA combined Open Buildings** GeoParquet (`TCD.parquet`), which
-merges **Google Open Buildings v3 + Microsoft + OSM**. Reading:
-
-1. Spatial-filter to the boundary bounding box (`bbox=` pushdown when the parquet has a covering-bbox
-   column, else `.cx` fallback).
+1. Spatial-filter the GeoParquet to the boundary bounding box (`bbox=` pushdown when a covering-bbox
+   column exists, `.cx` fallback otherwise).
 2. **Confidence filter:** keep Google footprints with `confidence ≥ 0.70`; keep all null-confidence
-   footprints (Microsoft/OSM carry no score).
-3. Assign each building to a district by **representative-point-within** spatial join, tagging it with
-   `boundary_code`.
+   footprints, since Microsoft and OSM carry no score.
+3. Assign each building to a boundary by representative-point-within spatial join.
 
-Buildings are used two ways: as a **household proxy** in Feature 1 (`count × 5.4 avg household size`),
-and as the raw material for **Feature 4** clustering.
+Buildings feed the household proxy in Feature 1 and are the raw material for Feature 4.
 
-### 5.3 The ensemble (Feature 1) — `features/estimation.py`
+### 8.4 Feature 1 — the ensemble (`features/estimation.py`)
 
 WorldPop and buildings are cross-validated rather than trusted blindly:
 
 ```
-buildingEstimate = buildingCount * AVG_HOUSEHOLD_SIZE      # 5.4
+buildingEstimate = buildingCount * AVG_HOUSEHOLD_SIZE      # 5.4 by default
 divergence       = |worldpop - buildingEstimate| / worldpop
 
 if buildings present and divergence < 0.30:                # methods agree
     population = 0.6*worldpop + 0.4*buildingEstimate
-    confidence = 0.85 + 0.15*(1 - divergence)              # high, method = "ensemble"
+    confidence = 0.85 + 0.15*(1 - divergence)              # method = "ensemble"
 else:                                                       # methods diverge
     population = worldpop                                   # WorldPop primary
-    confidence = 0.50 + 0.2*min(buildingCount/10, 1)       # flagged, method = "worldpop_primary"
+    confidence = 0.50 + 0.2*min(buildingCount/10, 1)       # method = "worldpop_primary"
 ```
 
-Each district also gets an equal-area area (`EPSG:6933`) and resulting population density. Result:
-`output/estimation/district_population.{csv,geojson}`.
+Each boundary also gets an equal-area area (`EPSG:6933`) and the resulting population density.
 
----
+### 8.5 Feature 2 — gap detection (`features/gap.py`)
 
-## 6. The five features
-
-| # | Feature | Module | Core technique | Output |
-|---|---------|--------|----------------|--------|
-| 1 | Population estimation | `features/estimation.py` | WorldPop zonal stats + Open Buildings ensemble | `estimation/district_population.*` |
-| 2 | Gap detection | `features/gap.py` | estimated vs registered → coverage ratio + classification | `gap/gap_report.*` |
-| 3 | Visualization | `demo/` + `react/` | Leaflet/MapLibre choropleth over GeoJSON | web dashboard |
-| 4 | Invisible settlements | `features/invisible.py` | DBSCAN on uncovered building centroids | `invisible/invisible_settlements.*` |
-| 5 | Risk scoring | `features/risk.py` | explainable 5-factor weighted model | enriches `gap_report.*` |
-
-### Feature 2 — gap detection
-
-Registered individuals and households (from the HCM register) are spatially joined into districts and
-compared against the Feature 1 estimate:
+Registered individuals and households are spatially joined into boundaries and compared against the
+Feature 1 estimate:
 
 ```
 coverageRatio = registeredPopulation / estimatedPopulation
@@ -239,31 +410,31 @@ coverageRatio = registeredPopulation / estimatedPopulation
 GREEN   ratio >= 0.85
 YELLOW  0.50 <= ratio < 0.85
 RED     ratio < 0.50
-BLACK   registered = 0 but buildings > 0   (a built-up district with nobody registered)
+BLACK   registered = 0 but buildings > 0   (a built-up area with nobody registered)
 ```
 
-`--scope national` classifies every district (uncovered ones fall to BLACK); `--scope ndjamena`
-restricts to districts the register actually covers. On the current national run the register is a
-N'Djamena sample, so most districts are correctly BLACK — the report does not fudge coverage it does
-not have.
+Gap detection only runs when the country has a register (`sources/register.has_register`) — today
+that is Chad, from the synthetic sample in `Data_Source/`. For any other ISO3 the engine returns
+estimates without gap or risk, rather than inventing coverage it cannot measure. Because the sample
+covers only N'Djamena, a national Chad run correctly reports most districts as BLACK.
 
-### Feature 4 — invisible settlement detection
+### 8.6 Feature 4 — invisible settlements (`features/invisible.py`)
 
-Finds clusters of buildings that **no registered household reaches**, i.e. settlements the campaign
-never enumerated:
+Finds clusters of buildings that **no registered household reaches** — settlements the campaign never
+enumerated:
 
-1. Filter to buildings with no registered household within `INVISIBLE_BUFFER_METERS = 200`
-   (one STRtree-indexed nearest query over the whole set — `O(n log m)`, not a per-building loop).
-2. **DBSCAN** the uncovered centroids per district (`eps = 100 m`, `min_samples = 3`).
-3. Each cluster's footprint is the **concave hull** (alpha shape, `ratio = 0.1`) of its buildings, so
-   a sprawling settlement follows its real outline instead of a convex hull that bridges gaps.
-4. Attach nearest registered district, distance, centroid, and a `UNVERIFIED` status for field
+1. Filter to buildings with no registered household within `INVISIBLE_BUFFER_METERS = 200`, via a
+   single STRtree-indexed nearest query over the whole set (`O(n log m)`, not a per-building loop).
+2. **DBSCAN** the uncovered centroids per boundary (`eps = 100 m`, `min_samples = 3`).
+3. Each cluster's footprint is the **concave hull** (alpha shape, `ratio = 0.1`), so a sprawling
+   settlement follows its real outline instead of a convex hull that bridges empty gaps.
+4. Attach the nearest registered boundary, distance, centroid, and an `UNVERIFIED` status for field
    follow-up.
 
-### Feature 5 — explainable risk scoring
+### 8.7 Feature 5 — explainable risk scoring (`features/risk.py`)
 
-A transparent weighted linear model (weights are configurable, seeded in `risk_score_config`), scoring
-each district 0–100 and enriching the gap report in place:
+A transparent weighted linear model (weights configurable, seeded in `risk_score_config`) scoring each
+boundary 0–100 and enriching the gap report in place:
 
 ```mermaid
 pie title Risk score weights
@@ -275,23 +446,30 @@ pie title Risk score weights
 ```
 
 - **Population gap** — `populationGap / estimatedPopulation`, clamped 0–1.
-- **Facility distance** — km from the district's interior point to the nearest MSP facility, saturating
-  at `RISK_FACILITY_MAX_KM = 50`; farther = less access = higher risk.
-- **Building density** — buildings per km², min-max normalized across districts in scope.
-- **Past performance** and **missed children** — no data feed yet: held at a neutral `0.5` and flagged
-  `provisional` in the per-factor `risk_factors` JSON, so the score is honest about what it does and
-  doesn't yet know.
+- **Facility distance** — km from the boundary's interior point to the nearest facility from the
+  uploaded sheet, saturating at `RISK_FACILITY_MAX_KM = 50`; farther = less access = higher risk.
+- **Building density** — buildings per km², min-max normalized across boundaries in scope.
+- **Past performance** and **missed children** — no data feed yet, so they are held at a neutral `0.5`
+  and flagged `provisional` in the per-factor `risk_factors` JSON. The score stays honest about what
+  it does and does not know.
 
 Bands: `CRITICAL ≥ 75`, `HIGH ≥ 50`, `MEDIUM ≥ 25`, else `LOW`. The full per-factor breakdown (score,
 weight, provisional flag) is written to `risk_factors` (jsonb) for explainability.
 
+### 8.8 Catchment overlay (`sources/catchments.py`)
+
+When a microplan sheet supplies facility coordinates, the engine builds **Voronoi catchment cells**
+around those points, clipped to their district. Points falling outside every district are snapped to
+the nearest within `CATCHMENT_SNAP_TOLERANCE_M = 2000` and dropped beyond that. Every feature then
+re-runs over the catchment cells, so you get the same estimates at facility granularity alongside the
+whole-country district layer.
+
 ---
 
-## 7. Data models
+## 9. Data model
 
-The serving-side schema is defined as Flyway migrations under `db/migration/` (`V1` PostGIS
-extensions, `V2` boundaries, `V3` PDI tables, `V4` risk-config seed). Every table is tenant-scoped
-(`tenant_id`) to fit DIGIT multi-tenancy, and all geometry is stored as `EPSG:4326`.
+Defined as Flyway migrations under `db/migration/`. Every table is tenant-scoped (`tenant_id`) to fit
+DIGIT multi-tenancy, and all geometry is stored as `EPSG:4326`.
 
 ```mermaid
 erDiagram
@@ -303,6 +481,7 @@ erDiagram
         uuid id PK
         text boundary_code UK
         text boundary_type
+        text name
         text parent_boundary_code
         geometry polygon
         float area_km2
@@ -328,6 +507,9 @@ erDiagram
         int estimated_population
         int registered_population
         int population_gap
+        int estimated_households
+        int registered_households
+        int household_gap
         float coverage_ratio
         text gap_classification
         int risk_score
@@ -367,151 +549,89 @@ erDiagram
         float weight_missed_children
         text tenant_id
     }
+    ENGINE_RESULT_CACHE {
+        text cache_key PK
+        text iso3
+        jsonb params
+        jsonb response
+        text geojson
+        text stats_json
+        bytea sheet_xlsx
+        int hit_count
+    }
 ```
 
-`gap_classification` is constrained to `GREEN/YELLOW/RED/BLACK`; `risk_priority` to
-`CRITICAL/HIGH/MEDIUM/LOW`; `gap_report` is unique per `(campaign_id, boundary_code)` with indexes on
-`(campaign_id, gap_classification)` and `(campaign_id, risk_score DESC)` for dashboard queries. The
-Python feature outputs are shaped to load 1:1 into these tables (column names and value domains already
-match).
+`gap_classification` is constrained to `GREEN/YELLOW/RED/BLACK`, `risk_priority` to
+`CRITICAL/HIGH/MEDIUM/LOW`. `gap_report` is unique per `(campaign_id, boundary_code)`, with indexes on
+`(campaign_id, gap_classification)` and `(campaign_id, risk_score DESC)` for dashboard queries.
+Geometry columns carry GiST indexes.
+
+### Adding a migration
+
+Create `db/migration/V6__<description>.sql` and re-run the Flyway command from §5.3. Never edit an
+applied migration — Flyway validates checksums and will refuse to run.
 
 ---
 
-## 8. End-to-end flow and how the pieces fit
+## 10. Configuration reference
 
-```mermaid
-sequenceDiagram
-    participant Ops as Analyst / batch job
-    participant BND as pdi-boundary
-    participant EST as Feature 1 (estimation)
-    participant GAP as Feature 2 (gap)
-    participant INV as Feature 4 (invisible)
-    participant RISK as Feature 5 (risk)
-    participant OUT as output files / PostGIS
-    participant UI as Dashboard (demo / DIGIT)
+| Variable | Default | Read by | Purpose |
+|----------|---------|---------|---------|
+| `PDI_ISO3` | `TCD` | Python | Default country for the batch CLI |
+| `PDI_YEAR` | `2026` | Python | Default projection year |
+| `PDI_CACHE_DIR` | `.cache/` | Python | Where downloads are cached |
+| `DATABASE_URL` | — | Python | SQLAlchemy URL for persistence |
+| `POSTGRES_DB/USER/PASSWORD/HOST/PORT` | `pdi`/`pdi`/`pdi`/`localhost`/`5432` | Compose, Java | Database connection |
+| `SPRING_DATASOURCE_URL` | derived from `POSTGRES_*` | Java | Override the full JDBC URL |
+| `PDI_ENGINE_PYTHON` | `../.venv/Scripts/python.exe` | Java | Interpreter used to run the engine |
+| `PDI_ENGINE_WORKDIR` | `../pdi-batch` | Java | Working directory for the engine process |
+| `PDI_ENGINE_TIMEOUT` | `0` | Java | Hard kill after N seconds; `0` = no cap |
+| `PDI_PERSIST_BUILDINGS` | `true` | Java | Persist individual footprints on first compute |
+| `PDI_CACHE_ENABLED` | `true` | Java | Master switch for the result cache |
+| `PDI_ARTIFACTS_DIR` | system temp | Java | Where job artifacts are written |
+| `VITE_API_BASE` | `http://localhost:8080` | demo | API base URL |
 
-    Ops->>BND: reconcile microplan vs MSP
-    BND-->>OUT: chad_districts_msp.geojson (126 districts)
-    Ops->>EST: estimate (WorldPop + Open Buildings)
-    EST-->>OUT: district_population.{csv,geojson}
-    Ops->>GAP: build (register vs estimate)
-    GAP-->>OUT: gap_report.{csv,geojson}
-    Ops->>INV: detect (uncovered building clusters)
-    INV-->>OUT: invisible_settlements.{csv,geojson}
-    Ops->>RISK: build (5-factor score)
-    RISK-->>OUT: gap_report.* enriched with risk
-    UI->>OUT: read pre-computed GeoJSON
-    UI-->>Ops: coverage map, gap list, invisible markers, risk priority
-```
-
-Everything keys off one join column, `Boundary_code`, from the boundary layer through estimation, gap,
-and risk, so the layers compose without any re-matching.
-
-### Quickstart
-
-```bash
-python -m venv .venv && source .venv/Scripts/activate   # Windows Git Bash
-pip install -r requirements.txt
-
-# 1. Build the engine boundary (126 MSP districts)
-cd pdi-boundary && python -m reconcile.districts && cd ..
-
-# 2. Run the intelligence engine
-cd pdi-batch
-python -m features.estimation          # Feature 1  (add --no-buildings to skip the VIDA cross-check)
-python -m features.gap --scope national # Feature 2
-python -m features.invisible --scope ndjamena  # Feature 4
-python -m features.risk                 # Feature 5 (enriches the gap report)
-pytest                                  # source + feature tests
-```
-
-The PostGIS/Redis/Kafka stack for the serving path is `docker compose up postgis` (add `--profile
-full` for Redis + Kafka); schema is applied with Flyway from `db/migration`.
-
-### Representative current run (national scope)
-
-| Metric | Value |
-|--------|-------|
-| Districts estimated | 126 |
-| WorldPop population (national, summed) | ~21.1 M |
-| Registered (N'Djamena sample) | ~48 k |
-| Gap classification | 121 BLACK, 5 RED (register covers only the sample) |
-| Risk priority | 2 CRITICAL, 117 HIGH, 7 MEDIUM |
-| Invisible settlement clusters | ~647 (≈116 k buildings) |
-
-These reflect a synthetic/sample register; they demonstrate the pipeline end-to-end, not a validated
-national coverage figure.
+Non-environment tuning — cohort definitions, thresholds, DBSCAN parameters, risk weights, CRS — lives
+in `pdi-batch/config.py`.
 
 ---
 
-## 9. DIGIT Health integration: current state and plan
+## 11. Troubleshooting
 
-PDI is deliberately built to drop into DIGIT HCM as a new analytics capability without touching core
-services. The split is: **Python batch jobs pre-compute into PostGIS; a Java Spring Boot service serves
-the DIGIT-standard API; the React micro-frontend renders it.**
-
-### What exists today
-
-- The full **batch pre-computation engine** (Features 1, 2, 4, 5) producing DIGIT-shaped tables.
-- The **PostGIS schema** (`db/migration`) matching those outputs, tenant-scoped and campaign-scoped.
-- A **DIGIT micro-frontend scaffold** (`react/`) following the `digit-ui-module-health-dss` pattern,
-  with a `PDIService` client already written against the intended endpoints (`/pdi/v1/_search`,
-  `/pdi/v1/_coverage`) using the DIGIT `RequestInfo` + `tenantId` convention.
-- A working **standalone demo dashboard** (`demo/`) proving the visualization layer (Feature 3) over
-  the real pre-computed GeoJSON.
-
-### What is missing (the integration work)
-
-1. **PostGIS loader.** `pdi-batch/persistence/` is a placeholder; feature outputs currently land as
-   CSV/GeoJSON. A loader is needed to upsert them into `population_estimate`, `gap_report`,
-   `invisible_settlement`, and `building_footprint`.
-2. **Java `population-denominator-service`.** The request-serving API (Controllers / Services / JPA
-   repositories reading the pre-computed tables) is designed but not yet implemented. It backs the
-   `/pdi/v1/*` endpoints the React client already calls.
-3. **Real HCM register feed.** Gap/invisible currently consume a synthetic register; the production
-   path is to read registered households/individuals from HCM (via Kafka consumer or a scheduled sync)
-   instead of local files.
-4. **Two provisional risk factors.** `past_performance` and `missed_children` need a data source
-   (historical campaign coverage, round outcomes) to move off their neutral placeholder.
-5. **Serving concerns.** Redis caching of dashboard aggregates, vector-tile serving (pg_tileserv /
-   Martin) for map layers, and Kafka events for invisible-settlement alerts are provisioned in
-   `docker-compose` but not yet wired.
-
-### Proposed integration sequence
-
-```mermaid
-flowchart LR
-    A["Add PostGIS loader<br/>(persistence/)"] --> B["Stand up Java<br/>population-denominator-service"]
-    B --> C["Point react/ module<br/>at live endpoints"]
-    C --> D["Wire HCM register feed<br/>(Kafka / sync)"]
-    D --> E["Backfill provisional<br/>risk factors"]
-    E --> F["Enable caching,<br/>tiles, alerts"]
-```
-
-This lets integration proceed incrementally: the batch layer and schema are ready now, so the first
-concrete step is the loader + Java read API, after which the existing React module lights up against
-real data.
+| Symptom | Cause and fix |
+|---------|---------------|
+| `DATABASE_URL is not set; check the project root .env` | `.env` missing or not at the project root. `pdi-batch/db.py` loads it from one level above `pdi-batch/`. |
+| Service starts but `_compute` fails immediately | Wrong `PDI_ENGINE_PYTHON`. It is relative to `pdi-service/`; on Linux/macOS use `../.venv/bin/python`. |
+| First compute appears frozen for a long time | It is downloading WorldPop rasters. Watch the job log in `PDI_ARTIFACTS_DIR`; `PROGRESS` lines show the percentage. |
+| `WARNING persistence skipped: …` in the engine output | Postgres unreachable or migrations not applied. Persistence is best-effort by design — the compute still returns. |
+| Dashboard loads but stats are empty | The compute ran without `campaignId`, so nothing was persisted, or you are querying a different `campaignId`/`tenantId`. |
+| Repeat computes are still slow | Result cache is off or the DB is down. Check `PDI_CACHE_ENABLED` and that `V5` has been applied. |
+| Flyway `validate` failure | An applied migration was edited. Restore it, or `flyway repair` if you know what changed. |
+| Everything is BLACK in the gap report | Expected for Chad: the register sample only covers N'Djamena. For other countries there is no register at all, so gap/risk are skipped. |
+| CORS error in the browser | The dashboard origin is not in `pdi.cors.allowed-origin-patterns` (defaults cover `localhost:*`). |
 
 ---
 
-## 10. Technology summary
+## 12. Technology summary
 
 | Concern | Choice | Notes |
 |---------|--------|-------|
 | Raster zonal stats | `rasterio`, `rasterstats`, `numpy` | coverage-weighted sub-pixel extraction |
-| Vector / spatial | `geopandas`, `shapely`, `pyproj`, `pyogrio` | spatial joins, hulls, equal-area density |
-| Building I/O | `pyarrow` GeoParquet | VIDA combined Open Buildings |
+| Vector / spatial | `geopandas`, `shapely`, `pyproj`, `pyogrio` | spatial joins, hulls, Voronoi, equal-area density |
+| Building I/O | `pyarrow` GeoParquet over `fsspec`/`aiohttp` | VIDA combined Open Buildings, bbox pushdown |
 | Clustering | `scikit-learn` DBSCAN | invisible settlement detection |
-| Serving DB | PostgreSQL 15 + PostGIS 3.4 | Flyway migrations; DIGIT-standard |
-| Config | `python-dotenv`, central `config.py` | one config module per pipeline |
-| API (planned) | Java Spring Boot + Hibernate Spatial | DIGIT convention; reads pre-computed tables |
-| Frontend | React micro-frontend (`react/`) + Leaflet demo (`demo/`) | DIGIT HCM module pattern |
-| Testing | `pytest` | `pdi-batch/tests`, `pdi-boundary/tests` |
+| Persistence | `sqlalchemy`, `geoalchemy2`, `psycopg` | upserts into PostGIS |
+| Database | PostgreSQL 15 + PostGIS 3.4, Flyway | DIGIT-standard, tenant-scoped |
+| API | Java 21, Spring Boot 3.4, Spring Data JPA | async job runner + read API |
+| Frontend | React 18 + Leaflet (`demo/`), DIGIT module (`react/`) | Feature 3 visualization |
+| Testing | `pytest`, JUnit via `spring-boot-starter-test` | |
+
+### Coordinate reference systems
+
+`EPSG:4326` (WGS84) is the storage CRS for all persisted geometry. Distance and clustering run in a
+metric CRS auto-derived per dataset (the UTM zone from the data bounds); area and population density
+use the equal-area `EPSG:6933`.
 
 ---
 
-## Coordinate reference systems
-
-`EPSG:4326` (WGS84) is the storage CRS for all persisted geometry. Distance and clustering run in a
-metric CRS auto-derived per dataset (UTM zone from the data bounds); area and population density use
-the equal-area `EPSG:6933`.
+Developed by Kashyap K

@@ -12,9 +12,13 @@ NAME = config.BOUNDARY_NAME_FIELD
 
 
 def load_catchment_points(sheet_path):
-    """Service points from the sheet: rows with coordinates, keyed by Service Boundary Code."""
     frame = pd.read_excel(sheet_path, sheet_name=config.SHEET_SHEET_NAME)
     lat, lon, code = config.SHEET_LAT_COLUMN, config.SHEET_LON_COLUMN, config.SHEET_CODE_COLUMN
+    missing = [c for c in (lat, lon, code) if c not in frame.columns]
+    if missing:
+        print(f"sheet has no service points (missing columns {missing}); "
+              "skipping the catchment overlay", flush=True)
+        return gpd.GeoDataFrame({CODE: []}, geometry=[], crs=config.STORAGE_CRS)
     frame = frame.dropna(subset=[lat, lon, code])
     points = gpd.GeoDataFrame(
         {CODE: frame[code].astype(str)},

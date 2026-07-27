@@ -99,14 +99,17 @@ def _finalize(invisible, homes, metric_crs):
     return df[TABLE_COLUMNS], gdf
 
 
-def detect(scope="ndjamena"):
-    """Return (table, gdf): invisible settlements as a DataFrame and a GeoDataFrame of convex hulls."""
-    boundaries = load_boundaries()
+def detect(scope="ndjamena", iso3=None):
+    boundaries = load_boundaries(iso3)
     metric_crs = resolve_metric_crs(boundaries)
 
     homes = _assign_households(boundaries).to_crs(metric_crs)
 
-    buildings = buildings_source.clip_to_boundaries(boundaries)
+    if scope == "ndjamena":
+        covered = set(homes["boundary_code"])
+        boundaries = boundaries[boundaries[CODE].isin(covered)]
+
+    buildings = buildings_source.clip_to_boundaries(boundaries, iso3)
     centroids = gpd.GeoSeries(
         buildings["centroid"].values, crs=config.STORAGE_CRS).to_crs(metric_crs)
     buildings = buildings.assign(mx=centroids.x.values, my=centroids.y.values)
@@ -146,9 +149,10 @@ def main():
     parser.add_argument("--scope", choices=["national", "ndjamena"], default="ndjamena",
                         help="ndjamena: only districts the register covers (the campaign footprint); "
                              "national: every district (clusters outside the register read as invisible)")
+    parser.add_argument("--iso3", help="country ISO3 (default from PDI_ISO3 / config)")
     args = parser.parse_args()
 
-    table, gdf = detect(scope=args.scope)
+    table, gdf = detect(scope=args.scope, iso3=args.iso3)
     config.INVISIBLE_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     table.to_csv(config.INVISIBLE_SETTLEMENTS_CSV, index=False, encoding="utf-8-sig")
     gdf.to_file(config.INVISIBLE_SETTLEMENTS_GEOJSON, driver="GeoJSON")

@@ -70,24 +70,9 @@ def _factors_json(scores, weights, building_density, distance_km):
     return factors
 
 
-def build(centers=None):
-    """Return (table, gdf): the gap report enriched with the weighted risk score.
-
-    ``centers`` (catchment points) enable the facility-distance factor; without
-    them it is dropped and the remaining weights renormalise to 1.0.
-    """
-    if not config.GAP_REPORT_GEOJSON.exists():
-        raise FileNotFoundError(
-            f"{config.GAP_REPORT_GEOJSON} not found - run features.gap first")
-    if not config.DISTRICT_POPULATION_CSV.exists():
-        raise FileNotFoundError(
-            f"{config.DISTRICT_POPULATION_CSV} not found - run features.estimation first")
-
-    gap = gpd.read_file(config.GAP_REPORT_GEOJSON)
-    gap = gap.drop(columns=[c for c in RISK_COLUMNS if c in gap.columns])
-    est = pd.read_csv(
-        config.DISTRICT_POPULATION_CSV, usecols=[CODE, "building_count", "area_km2"])
-    df = gap.merge(est, on=CODE, how="left")
+def score(gap_gdf, est, centers=None):
+    gap = gap_gdf.drop(columns=[c for c in RISK_COLUMNS if c in gap_gdf.columns])
+    df = gap.merge(est[[CODE, "building_count", "area_km2"]], on=CODE, how="left")
 
     # Factor 1 - population gap relative to the estimate, clamped to 0-1 (registered overshoot -> 0).
     gap_score = (df["population_gap"] / df["estimated_population"]).where(
@@ -136,6 +121,21 @@ def build(centers=None):
     gdf = gpd.GeoDataFrame(
         df[ordered + ["geometry"]], geometry="geometry", crs=config.STORAGE_CRS)
     return table, gdf
+
+
+def build(centers=None):
+    """Batch entry point: score the on-disk gap report (see :func:`score`)."""
+    if not config.GAP_REPORT_GEOJSON.exists():
+        raise FileNotFoundError(
+            f"{config.GAP_REPORT_GEOJSON} not found - run features.gap first")
+    if not config.DISTRICT_POPULATION_CSV.exists():
+        raise FileNotFoundError(
+            f"{config.DISTRICT_POPULATION_CSV} not found - run features.estimation first")
+
+    gap = gpd.read_file(config.GAP_REPORT_GEOJSON)
+    est = pd.read_csv(
+        config.DISTRICT_POPULATION_CSV, usecols=[CODE, "building_count", "area_km2"])
+    return score(gap, est, centers)
 
 
 def main():

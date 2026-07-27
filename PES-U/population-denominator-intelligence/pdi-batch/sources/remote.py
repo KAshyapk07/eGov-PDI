@@ -21,18 +21,37 @@ def _cache_dir(iso3):
     return path
 
 
-def _download(url, dest):
-    """Stream ``url`` to ``dest`` once; a present non-empty file is reused."""
+def _download(url, dest, *, name=None, base=0.0, span=100.0):
+    """Stream ``url`` to ``dest`` once; a present non-empty file is reused.
+
+    While streaming, emit ``PROGRESS <pct> …`` lines that the service parses into
+    a download progress bar. ``base``/``span`` let a caller map this single file
+    onto a slice of an overall bar (e.g. file 3 of 37), so the percentage climbs
+    smoothly across a multi-file WorldPop fetch instead of resetting each file.
+    """
     dest = Path(dest)
     if dest.exists() and dest.stat().st_size > 0:
         return dest
     dest.parent.mkdir(parents=True, exist_ok=True)
+    label = name or dest.name
+    print(f"downloading {label}", flush=True)
     tmp = dest.with_suffix(dest.suffix + ".part")
     with requests.get(url, stream=True, timeout=300, headers=_HEADERS) as resp:
         resp.raise_for_status()
+        total = int(resp.headers.get("Content-Length") or 0)
+        done = 0
+        last_pct = -1
         with open(tmp, "wb") as handle:
             for chunk in resp.iter_content(1 << 20):
                 handle.write(chunk)
+                done += len(chunk)
+                if not total:
+                    continue
+                pct = min(100, int(base + span * done / total))
+                if pct >= last_pct + 1:
+                    last_pct = pct
+                    print(f"PROGRESS {pct} {label} "
+                          f"({done / 1e6:.0f}/{total / 1e6:.0f} MB)", flush=True)
     tmp.replace(dest)
     return dest
 
@@ -57,7 +76,7 @@ def boundaries_geojson(iso3=None):
             tried.append(adm)
             continue
         resp.raise_for_status()
-        return _download(resp.json()["gjDownloadURL"], dest)
+        return _download(resp.json()["gjDownloadURL"], dest, name="boundaries")
     raise RuntimeError(
         f"geoBoundaries has no ADM boundary for {iso3} (tried {', '.join(tried)})")
 
@@ -90,14 +109,22 @@ def worldpop_age_rasters(iso3=None, year=None):
     iso3 = _iso3(iso3)
     year = year or config.TARGET_YEAR
     record = _worldpop_record(config.WORLDPOP_AGE_ALIAS, iso3, year)
-    out = {}
+    entries = []
     for url in record["files"]:
         if not url.lower().endswith(".tif"):
             continue
         name = url.rsplit("/", 1)[-1]
         token = _token_from_filename(name, iso3)
         if token:
-            out[token] = _download(url, _cache_dir(iso3) / "worldpop" / name)
+            entries.append((token, url, name))
+
+    out = {}
+    count = len(entries)
+    for index, (token, url, name) in enumerate(entries):
+        out[token] = _download(
+            url, _cache_dir(iso3) / "worldpop" / name,
+            name=f"WorldPop age raster {index + 1}/{count}",
+            base=index * 100 / count, span=100 / count)
     return out
 
 
@@ -110,7 +137,8 @@ def worldpop_total_raster(iso3=None, year=None):
     if not tifs:
         raise RuntimeError(f"WorldPop total raster missing for {iso3} {year}")
     url = tifs[0]
-    return _download(url, _cache_dir(iso3) / "worldpop" / url.rsplit("/", 1)[-1])
+    return _download(url, _cache_dir(iso3) / "worldpop" / url.rsplit("/", 1)[-1],
+                     name="WorldPop total raster")
 
 
 # --- Buildings: VIDA per-country GeoParquet, read remotely --------------------

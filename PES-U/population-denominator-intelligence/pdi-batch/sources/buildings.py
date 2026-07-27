@@ -17,6 +17,7 @@ def _confidence_ok(buildings):
 def _read_in_bbox(bounds, iso3=None):
     """Footprints whose bbox intersects ``bounds`` (minx, miny, maxx, maxy)."""
     url = remote.vida_parquet_url(iso3)
+    print("streaming Open Buildings footprints", flush=True)
     filesystem = fsspec.filesystem("https")
     with filesystem.open(url, block_size=1 << 22) as handle:
         buildings = gpd.read_parquet(handle, bbox=tuple(bounds))

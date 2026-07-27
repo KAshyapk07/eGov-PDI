@@ -1,14 +1,16 @@
+# Local-only design notes, diagrams and decks.
 docs
 
 # Synthetic data is the only retained local source; all others fetched on demand.
 Data_Source/Synthetic data
 Data_Source/Chad/VIDA/*.parquet
 
-# Transient on-demand download cache (WorldPop rasters, boundary GeoJSON, etc.)
+# Transient on-demand download cache (WorldPop rasters, boundary GeoJSON, VIDA parquet).
 .cache/
 
-pdi-boundary/output
+# Generated batch output (CSV / GeoJSON per feature).
 pdi-batch/output
+
 # Python environment
 .venv/
 **/.venv/
@@ -17,15 +19,16 @@ __pycache__/
 .env
 .pytest_cache/
 
-# Local Flyway CLI config
+# Local secrets / Flyway CLI config
 db/flyway.conf
 
-# Node / build artifacts
+# Java build output
+target/
+
+# Node / frontend build artifacts
 node_modules/
 dist/
-
-#demo
-demo/
+demo/public/data/
 
 # OS / editor cruft
 .DS_Store

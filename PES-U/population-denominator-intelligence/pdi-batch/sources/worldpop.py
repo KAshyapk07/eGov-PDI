@@ -1,4 +1,4 @@
-"""WorldPop zonal statistics computed from on-demand, per-country GeoTIFFs."""
+#WorldPop zonal statistics computed from on-demand, per-country GeoTIFFs
 
 import math
 
@@ -71,7 +71,9 @@ def compute_zonal(boundaries, iso3=None, year=None):
     """Per-boundary population for every configured target group, keyed by boundary_code."""
     codes = boundaries[config.BOUNDARY_CODE_FIELD].tolist()
     tokens = {token for tokens in config.TARGET_GROUPS.values() for token in tokens}
+    print(f"fetching WorldPop rasters ({len(tokens)} bands)", flush=True)
     rasters = _resolve_rasters(tokens, iso3, year)
+    print(f"computing population over {len(codes)} boundaries", flush=True)
     band_sums = {token: _zonal_sums(boundaries.geometry, rasters[token]) for token in tokens}
     return _group_rows(codes, band_sums, config.TARGET_GROUPS)
 
