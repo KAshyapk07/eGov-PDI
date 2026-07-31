@@ -342,8 +342,10 @@ unreachable the cache disables itself for the process and every request simply r
   `ADM0`. Codes come from `shapeID`, names from `shapeName`.
 - **WorldPop** — the REST catalogue, resolving the constrained 100 m total-population and age/sex
   structure releases for the requested year.
-- **Buildings** — the VIDA combined Open Buildings GeoParquet for that country, read directly over
-  HTTPS with bounding-box pushdown.
+- **Buildings** — the VIDA combined Open Buildings GeoParquet for that country, downloaded once to
+  `.cache/<ISO3>/<ISO3>_buildings.parquet` and then read locally with bounding-box pushdown. A single
+  run reads it up to four times (country estimate, invisible settlements, and both passes when a
+  microplan sheet is uploaded), so streaming it per read made every run pay the full ~600 MB repeatedly.
 
 Downloads emit `PROGRESS <pct> …` lines, which the Java service parses into the UI progress bar.
 
@@ -618,7 +620,7 @@ in `pdi-batch/config.py`.
 |---------|--------|-------|
 | Raster zonal stats | `rasterio`, `rasterstats`, `numpy` | coverage-weighted sub-pixel extraction |
 | Vector / spatial | `geopandas`, `shapely`, `pyproj`, `pyogrio` | spatial joins, hulls, Voronoi, equal-area density |
-| Building I/O | `pyarrow` GeoParquet over `fsspec`/`aiohttp` | VIDA combined Open Buildings, bbox pushdown |
+| Building I/O | `pyarrow` GeoParquet from the local cache | VIDA combined Open Buildings, bbox pushdown |
 | Clustering | `scikit-learn` DBSCAN | invisible settlement detection |
 | Persistence | `sqlalchemy`, `geoalchemy2`, `psycopg` | upserts into PostGIS |
 | Database | PostgreSQL 15 + PostGIS 3.4, Flyway | DIGIT-standard, tenant-scoped |

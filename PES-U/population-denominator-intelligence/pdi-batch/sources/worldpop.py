@@ -67,14 +67,26 @@ def _resolve_rasters(tokens, iso3, year):
     return rasters
 
 
-def compute_zonal(boundaries, iso3=None, year=None):
-    """Per-boundary population for every configured target group, keyed by boundary_code."""
+def compute_zonal(boundaries, iso3=None, year=None, label="population"):
+    """Per-boundary population for every configured target group, keyed by boundary_code.
+
+    ``label`` names the pass in the progress log; a run with a microplan sheet does
+    this twice (whole country, then the catchment cells).
+    """
     codes = boundaries[config.BOUNDARY_CODE_FIELD].tolist()
     tokens = {token for tokens in config.TARGET_GROUPS.values() for token in tokens}
     print(f"fetching WorldPop rasters ({len(tokens)} bands)", flush=True)
     rasters = _resolve_rasters(tokens, iso3, year)
-    print(f"computing population over {len(codes)} boundaries", flush=True)
-    band_sums = {token: _zonal_sums(boundaries.geometry, rasters[token]) for token in tokens}
+    print(f"computing {label} over {len(codes)} boundaries", flush=True)
+
+    # One band at a time, reporting as we go: this pass is minutes long on a national
+    # run, and without progress the caller cannot tell it apart from a hung job.
+    band_sums = {}
+    ordered = sorted(tokens)
+    for index, token in enumerate(ordered):
+        band_sums[token] = _zonal_sums(boundaries.geometry, rasters[token])
+        print(f"PROGRESS {(index + 1) * 100 // len(ordered)} {label}: "
+              f"band {index + 1}/{len(ordered)} over {len(codes)} boundaries", flush=True)
     return _group_rows(codes, band_sums, config.TARGET_GROUPS)
 
 

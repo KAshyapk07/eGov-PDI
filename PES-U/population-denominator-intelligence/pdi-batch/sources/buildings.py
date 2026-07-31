@@ -1,4 +1,3 @@
-import fsspec
 import geopandas as gpd
 
 import config
@@ -6,6 +5,7 @@ from sources import remote
 from sources.boundaries import load_boundaries
 
 _OUTPUT_COLUMNS = ["geometry", "centroid", "area_m2", "confidence", "bf_source", "boundary_code"]
+_LAST_READ = {}
 
 
 def _confidence_ok(buildings):
@@ -16,12 +16,18 @@ def _confidence_ok(buildings):
 
 def _read_in_bbox(bounds, iso3=None):
     """Footprints whose bbox intersects ``bounds`` (minx, miny, maxx, maxy)."""
-    url = remote.vida_parquet_url(iso3)
-    print("streaming Open Buildings footprints", flush=True)
-    filesystem = fsspec.filesystem("https")
-    with filesystem.open(url, block_size=1 << 22) as handle:
-        buildings = gpd.read_parquet(handle, bbox=tuple(bounds))
-    return buildings.to_crs(config.STORAGE_CRS)
+    bbox = tuple(round(value, 6) for value in bounds)
+    key = ((iso3 or config.COUNTRY_ISO3).upper(), bbox)
+    if key in _LAST_READ:
+        print("reusing Open Buildings footprints", flush=True)
+        return _LAST_READ[key]
+
+    path = remote.vida_parquet(iso3)
+    _LAST_READ.clear()
+    print("reading Open Buildings footprints", flush=True)
+    buildings = gpd.read_parquet(path, bbox=bbox).to_crs(config.STORAGE_CRS)
+    _LAST_READ[key] = buildings
+    return buildings
 
 
 def clip_to_boundaries(boundaries, iso3=None):

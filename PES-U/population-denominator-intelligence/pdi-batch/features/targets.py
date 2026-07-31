@@ -26,7 +26,7 @@ def compute(iso3=None, sheet_path=None, avg_household_size=None,
     groups = groups or config.DEFAULT_TARGET_GROUPS
     table, units = estimation.estimate(
         iso3=iso3, sheet_path=None, with_buildings=with_buildings,
-        avg_household_size=avg_household_size, year=year)
+        avg_household_size=avg_household_size, year=year, label="country population")
     return _targets_frame(table, groups), units.reset_index(drop=True)
 
 
@@ -44,7 +44,8 @@ def compute_catchments(iso3=None, sheet_path=None, avg_household_size=None,
         return None, None
     table, units = estimation.estimate(
         iso3=iso3, with_buildings=with_buildings,
-        avg_household_size=avg_household_size, units=cells, year=year)
+        avg_household_size=avg_household_size, units=cells, year=year,
+        label="catchment population")
     return _targets_frame(table, groups), units.reset_index(drop=True)
 
 

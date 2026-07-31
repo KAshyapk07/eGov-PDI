@@ -42,11 +42,12 @@ def _ensemble(total, count, household_size):
 
 
 def estimate(iso3=None, sheet_path=None, with_buildings=True, avg_household_size=None,
-             units=None, year=None):
+             units=None, year=None, label="population"):
     household_size = avg_household_size or config.AVG_HOUSEHOLD_SIZE
     districts = units if units is not None else build_analysis_units(iso3, sheet_path)
 
-    groups = pd.DataFrame(worldpop.compute_zonal(districts, iso3, year)).set_index("boundary_code")
+    groups = pd.DataFrame(
+        worldpop.compute_zonal(districts, iso3, year, label=label)).set_index("boundary_code")
     table = districts.drop(columns="geometry").join(groups, on=CODE)
 
     # Buildings are a best-effort cross-check: the VIDA footprints are streamed from

@@ -141,7 +141,21 @@ def worldpop_total_raster(iso3=None, year=None):
                      name="WorldPop total raster")
 
 
-# --- Buildings: VIDA per-country GeoParquet, read remotely --------------------
+# --- Buildings: VIDA per-country GeoParquet, cached on disk -------------------
 
 def vida_parquet_url(iso3=None):
     return config.VIDA_PARQUET_URL.format(iso3=_iso3(iso3))
+
+
+def vida_parquet(iso3=None):
+    """Local path to the national building footprints (downloaded once).
+
+    Cached like the WorldPop rasters rather than streamed per read: the file is
+    ~600 MB and a single run reads it up to four times (country estimate,
+    invisible settlements, and both passes when a microplan sheet is uploaded),
+    which dominated the runtime on a slow link.
+    """
+    iso3 = _iso3(iso3)
+    return _download(vida_parquet_url(iso3),
+                     _cache_dir(iso3) / f"{iso3}_buildings.parquet",
+                     name="Open Buildings footprints")
