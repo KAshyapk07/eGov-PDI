@@ -22,5 +22,7 @@ public record EngineResult(String iso3,
                            String catchmentsGeojson,
                            String buildingsGeojson,
                            boolean riskAvailable,
-                           String statsJson) {
+                           String statsJson,
+                           /** How the uploads resolved: name matches, misses, cells needing review. */
+                           Map<String, Object> provenance) {
 }

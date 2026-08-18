@@ -30,7 +30,7 @@ def test_clusters_in_groups_dense_buildings():
     assert sorted(count for _, _, _, count in clusters) == [3, 3]
 
 
-def test_uncovered_buildings_drops_those_within_the_register_buffer():
+def test_uncovered_buildings_drops_those_within_the_enumeration_buffer():
     crs = _metric()
     # Three buildings near a household (<=200 m), three ~5 km away (uncovered).
     xs = [0, 30, 60, 5000, 5030, 5060]

@@ -1,9 +1,11 @@
 package org.pdi.web;
 
 import org.pdi.engine.ComputeCommand;
+import org.pdi.engine.EngineInput;
 import org.pdi.service.ArtifactStore;
 import org.pdi.service.Job;
 import org.pdi.service.TargetService;
+import org.pdi.service.Uploads;
 import org.pdi.web.dto.JobStatusResponse;
 import org.pdi.web.dto.JobSubmitResponse;
 import org.springframework.core.io.PathResource;
@@ -21,6 +23,8 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.nio.file.Path;
+import java.util.EnumMap;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/population/v1/targets")
@@ -37,8 +41,17 @@ public class TargetController {
         this.artifacts = artifacts;
     }
 
+    /**
+     * Start a compute run.
+     *
+     * <p>{@code boundaries} is the catchment geojson and {@code enumeration} the field
+     * workbook; both are optional, and each one supplied adds a layer to the result. The
+     * older {@code sheet} parameter still works but is superseded by {@code boundaries}.
+     */
     @PostMapping(path = "/_compute", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public JobSubmitResponse compute(@RequestParam(value = "sheet", required = false) MultipartFile sheet,
+    public JobSubmitResponse compute(@RequestParam(value = "boundaries", required = false) MultipartFile boundaries,
+                                     @RequestParam(value = "enumeration", required = false) MultipartFile enumeration,
+                                     @RequestParam(value = "sheet", required = false) MultipartFile sheet,
                                      @RequestParam("iso3") String iso3,
                                      @RequestParam(value = "year", required = false) Integer year,
                                      @RequestParam(value = "householdSize", required = false) Double householdSize,
@@ -47,12 +60,27 @@ public class TargetController {
                                      @RequestParam(value = "campaignId", required = false) String campaignId,
                                      @RequestParam(value = "tenantId", defaultValue = "default") String tenantId,
                                      @RequestParam(value = "force", defaultValue = "false") boolean force) {
+        Map<EngineInput, MultipartFile> files = new EnumMap<>(EngineInput.class);
+        files.put(EngineInput.BOUNDARIES, boundaries);
+        files.put(EngineInput.ENUMERATION, enumeration);
+        files.put(EngineInput.SHEET, sheet);
+        files.forEach(TargetController::requireExpectedExtension);
+
         String normalizedIso3 = normalizeIso3(iso3);
         String resolvedCampaign = resolveCampaignId(campaignId, normalizedIso3, year);
         ComputeCommand command = new ComputeCommand(
                 normalizedIso3, year, householdSize, groups, withBuildings, resolvedCampaign, tenantId, force);
-        String jobId = targetService.submit(sheet, command);
+        String jobId = targetService.submit(files, command);
         return new JobSubmitResponse(jobId, "/population/v1/targets/" + jobId + "/_status");
+    }
+
+    private static void requireExpectedExtension(EngineInput input, MultipartFile file) {
+        if (!Uploads.hasExpectedExtension(input, file)) {
+            throw new ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST,
+                    input.parameter() + " must be a " + input.extension() + " file, got "
+                            + file.getOriginalFilename());
+        }
     }
 
     private String resolveCampaignId(String campaignId, String iso3, Integer year) {

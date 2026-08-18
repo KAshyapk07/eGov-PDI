@@ -53,11 +53,13 @@
 .field-input:focus { border-color: var(--primary); outline: none; }
 .field-file { font-size: 13px; color: var(--ink-2); }
 .field-hint { font-size: 12px; color: var(--muted); }
+/* Per-file complaint, sitting under its own input rather than in the form-wide banner,
+   so it is obvious which of the two uploads is the problem. */
+.field-error { font-size: 12px; color: var(--danger); line-height: 1.45; }
 .field-row { display: flex; gap: 18px; align-items: flex-end; margin-bottom: 16px; }
 .field-grow { flex: 1; margin-bottom: 0; }
 .field-row .field { margin-bottom: 0; }
 .year-input { width: 120px; }
-.tenant-input { width: 130px; }
 .check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); padding-bottom: 10px; }
 .check input { width: 16px; height: 16px; accent-color: var(--primary); }
 
@@ -180,26 +182,7 @@
 .results-split { flex: 1; display: grid; grid-template-columns: 1fr 340px; min-height: 0; }
 .results-map { height: 100%; width: 100%; }
 
-/* Documented dashboard summary (GET /dashboard/_stats, read from PostGIS) */
-.dash { padding: 14px 18px 4px; border-bottom: 1px solid var(--line); background: var(--surface); }
-.dash-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
-.dash-title { font-size: 13px; font-weight: 700; color: var(--ink); letter-spacing: -0.01em; }
-.dash-src { font-size: 11px; color: var(--muted); }
-.dash-tiles { display: grid; grid-template-columns: repeat(8, 1fr); gap: 10px; }
-.dash-tile { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 9px 11px; }
-.dash-tile-v { font-size: 17px; font-weight: 700; color: var(--primary); line-height: 1.15; }
-.dash-tile-k { font-size: 10.5px; color: var(--muted); margin-top: 2px; }
-.dash-dists { display: flex; flex-wrap: wrap; gap: 22px; margin: 12px 0 2px; }
-.dash-dist-k { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-right: 8px; }
-.dash-chips { display: inline-flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .chip { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px; background: var(--surface-2); color: var(--ink-2); border: 1px solid var(--line-strong); }
-.chip.gap-green, .chip.risk-low { background: #dcfce7; color: #166534; border-color: #bbf7d0; }
-.chip.gap-yellow, .chip.risk-medium { background: #fef9c3; color: #854d0e; border-color: #fde68a; }
-.chip.gap-red, .chip.risk-high { background: #fee2e2; color: #991b1b; border-color: #fecaca; }
-.chip.gap-black, .chip.risk-critical { background: #1f2937; color: #f9fafb; border-color: #111827; }
-
-@media (max-width: 1100px) { .dash-tiles { grid-template-columns: repeat(4, 1fr); } }
-@media (max-width: 640px) { .dash-tiles { grid-template-columns: repeat(2, 1fr); } }
 
 /* Rich results dashboard: KPI cards + filters stacked above the map/panel split */
 .results-scroll { flex: 1; display: flex; flex-direction: column; min-height: 0; }
@@ -270,6 +253,13 @@
 .cov-kpi-k { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
 .cov-kpi-v { font-size: 22px; font-weight: 700; color: var(--ink); line-height: 1.15; margin-top: 3px; }
 .cov-kpi-s { font-size: 12px; color: var(--ink-2); margin-top: 2px; }
+
+/* Names the measure the headline percentage is a ratio of, so it can never be read
+   against the other measure's counts sitting below it. */
+.cov-hero-measure {
+  font-size: 11px; color: var(--muted); margin-top: 6px;
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
 
 @media (max-width: 820px) {
   .cov-kpis { grid-template-columns: repeat(2, 1fr); }

@@ -1,123 +1,93 @@
+"""Feature 2 - the gap report: what the field enumerated against what the engine estimates.
+
+The comparison itself lives in :mod:`features.coverage`; this module is the batch entry
+point that reads the estimation output from disk, joins the uploaded enumeration onto it,
+and writes the report out.
+"""
+
 import argparse
-from datetime import datetime, timezone
 
 import geopandas as gpd
-import pandas as pd
 
 import config
-from sources import register
+from features import coverage
+from sources import enumeration as enumeration_source
 
 CODE = config.BOUNDARY_CODE_FIELD
 
 IDENTITY_COLUMNS = [CODE, "campaign_id", "msp_district", "msp_province", "microplan_district"]
-REPORT_COLUMNS = [
-    "estimated_population", "registered_population", "population_gap",
-    "estimated_households", "registered_households", "household_gap",
-    "coverage_ratio", "gap_classification",
-    "registered_under5", "estimated_under5", "coverage_ratio_under5",
-    "computed_at", "tenant_id",
-]
 
 
-def classify(coverage_ratio, registered_population, building_count):
-    """GREEN/YELLOW/RED by coverage, BLACK when a built-up district has no registrations."""
-    if registered_population == 0:
-        return "BLACK" if building_count > 0 else "RED"
-    if coverage_ratio is None or pd.isna(coverage_ratio):
-        return "RED"
-    if coverage_ratio >= config.GAP_GREEN_THRESHOLD:
-        return "GREEN"
-    if coverage_ratio >= config.GAP_YELLOW_THRESHOLD:
-        return "YELLOW"
-    return "RED"
+def build(enumeration_path=None, boundaries_path=None, measure=None, tenant_id=None):
+    """Return ``(table, gdf, resolution)``: the per-unit gap report and its name matching.
 
-
-def _coverage(registered, estimated):
-    return (registered / estimated).where(estimated > 0).round(4)
-
-
-def build(scope="national", iso3=None):
-    """Return (table, gdf): the per-unit gap report as a DataFrame and a GeoDataFrame.
-
-    The register is used only when the entered country has register data
-    (``register.has_register``); otherwise coverage is left undefined and every
-    unit is classified ``NO_REGISTER`` rather than a misleading zero-coverage RED.
+    ``enumeration_path`` is the uploaded workbook. Without one there is nothing to compare
+    against, so every unit is classified ``NO_ENUMERATION`` rather than a misleading
+    zero-coverage RED.
     """
     if not config.DISTRICT_POPULATION_GEOJSON.exists():
         raise FileNotFoundError(
             f"{config.DISTRICT_POPULATION_GEOJSON} not found - run features.estimation first")
     est = gpd.read_file(config.DISTRICT_POPULATION_GEOJSON)
 
-    register_available = register.has_register(iso3)
-    if register_available:
-        counts = register.registered_counts(est[[CODE, "geometry"]])
-        df = est.merge(counts, on=CODE, how="left")
-        for column in ["registered_population", "registered_under5", "registered_households"]:
-            df[column] = df[column].fillna(0).astype(int)
-    else:
-        df = est.copy()
-        for column in ["registered_population", "registered_under5", "registered_households"]:
-            df[column] = 0
+    counts, resolution = load_enumeration_for(est, enumeration_path, boundaries_path)
+    frame = coverage.compare(est, counts, measure=measure, tenant_id=tenant_id)
+    frame["campaign_id"] = config.CAMPAIGN_ID
 
-    df["campaign_id"] = config.CAMPAIGN_ID
-    df["tenant_id"] = config.TENANT_ID
-    df["estimated_population"] = df["population_estimate"].astype(int)
-    df["estimated_under5"] = df["under5"].round().astype(int)
-
-    df["population_gap"] = df["estimated_population"] - df["registered_population"]
-    df["household_gap"] = df["estimated_households"] - df["registered_households"]
-    df["coverage_ratio"] = _coverage(df["registered_population"], df["estimated_population"])
-    df["coverage_ratio_under5"] = _coverage(df["registered_under5"], df["estimated_under5"])
-    if register_available:
-        df["gap_classification"] = df.apply(
-            lambda row: classify(row["coverage_ratio"], row["registered_population"],
-                                 row["building_count"]), axis=1)
-    else:
-        df["gap_classification"] = "NO_REGISTER"
-        df["coverage_ratio"] = pd.NA
-        df["coverage_ratio_under5"] = pd.NA
-    df["computed_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
-
-    if scope == "ndjamena":
-        df = df[df["registered_population"] > 0]
-
-    columns = [c for c in IDENTITY_COLUMNS if c in df.columns] + REPORT_COLUMNS
-    table = df[columns].reset_index(drop=True)
+    columns = [c for c in IDENTITY_COLUMNS if c in frame.columns] + coverage.report_columns(frame)
+    table = frame[columns].reset_index(drop=True)
     gdf = gpd.GeoDataFrame(
         table.merge(est[[CODE, "geometry"]], on=CODE), geometry="geometry",
         crs=config.STORAGE_CRS)
-    return table, gdf
+    return table, gdf, resolution
+
+
+def load_enumeration_for(units, enumeration_path, boundaries_path=None):
+    """``(counts, resolution)`` for ``units``, or ``(None, empty)`` when nothing was uploaded.
+
+    The roster the sheet's names resolve onto is the set of unit codes, which for uploaded
+    catchments are the facility names themselves.
+    """
+    from sources import facilities
+
+    if not enumeration_source.has_enumeration(enumeration_path):
+        return None, facilities.Resolution()
+    roster = list(units[CODE].astype(str))
+    return enumeration_source.load_enumeration(enumeration_path, roster)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--scope", choices=["national", "ndjamena"], default="national",
-                        help="national: every district (uncovered ones fall to BLACK); "
-                             "ndjamena: only districts the register actually covers")
-    parser.add_argument("--iso3", help="country ISO3 (default from PDI_ISO3 / config)")
+    parser.add_argument("--enumeration", help="uploaded enumeration workbook (.xlsx)")
+    parser.add_argument("--boundaries", help="uploaded catchment geojson")
+    parser.add_argument("--measure", choices=list(coverage.MEASURES),
+                        help="comparison driving classification (default from config)")
     args = parser.parse_args()
 
-    table, gdf = build(scope=args.scope, iso3=args.iso3)
+    table, gdf, resolution = build(args.enumeration, args.boundaries, args.measure)
     config.GAP_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     table.to_csv(config.GAP_REPORT_CSV, index=False, encoding="utf-8-sig")
     gdf.to_file(config.GAP_REPORT_GEOJSON, driver="GeoJSON")
 
+    print(resolution.summary())
+    print(f"\nmeasure:                  {table['coverage_measure'].iloc[0]}")
+    print(f"units in report:          {len(table):>12,}")
     counts = table["gap_classification"].value_counts()
-    print(f"scope:                    {args.scope}")
-    print(f"districts in report:      {len(table):>12,}")
-    print(f"registered (assigned):    {table['registered_population'].sum():>12,}")
-    print(f"estimated (in report):    {table['estimated_population'].sum():>12,}")
     print("classification:")
-    for label in ["GREEN", "YELLOW", "RED", "BLACK"]:
-        print(f"  {label:<8} {int(counts.get(label, 0)):>6}")
-    covered = table[table["registered_population"] > 0]
-    if not covered.empty:
-        print("\ncovered districts (registered vs estimated, coverage):")
-        for _, row in covered.sort_values("registered_population", ascending=False).iterrows():
-            name = row.get("msp_district") or row[CODE]
-            print(f"  {name:<20} {row['registered_population']:>7,} / "
-                  f"{row['estimated_population']:>9,}  "
-                  f"{(row['coverage_ratio'] or 0):>6.1%}  {row['gap_classification']}")
+    for label in ["GREEN", "YELLOW", "RED", "BLACK", "POOLED", "NOT_ENUMERATED", "NO_ENUMERATION"]:
+        if counts.get(label):
+            print(f"  {label:<16} {int(counts.get(label, 0)):>6}")
+
+    summary = coverage.totals(table)
+    if summary:
+        print(f"\nenumerated vs estimated over {summary['units']} units:")
+        for measure, values in summary.items():
+            if not isinstance(values, dict):
+                continue
+            ratio = values["coverage"]
+            print(f"  {measure:<12} {values['enumerated']:>9,} / {values['estimated']:>9,}"
+                  f"  {'-' if ratio is None else f'{ratio:.1%}'}")
+
     print(f"\nWrote:\n  {config.GAP_REPORT_CSV}\n  {config.GAP_REPORT_GEOJSON}")
 
 

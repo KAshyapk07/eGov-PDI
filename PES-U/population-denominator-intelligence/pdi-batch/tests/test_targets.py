@@ -1,7 +1,6 @@
 import geopandas as gpd
 import pandas as pd
-import pytest
-from shapely.geometry import box, Point
+from shapely.geometry import box
 
 import config
 from features import targets
@@ -10,45 +9,6 @@ CODE = config.BOUNDARY_CODE_FIELD
 
 
 def _units():
-    """Two boundaries: one over N'Djamena (catches the register), one far away."""
-    return gpd.GeoDataFrame(
-        {
-            CODE: ["NDJ", "FAR"],
-            "population_estimate": [100000, 5000],
-            "under5": [20000, 1000],
-            "building_count": [500, 0],
-            "geometry": [box(14.9, 12.0, 15.2, 12.3), box(20.0, 20.0, 20.1, 20.1)],
-        },
-        geometry="geometry",
-        crs=config.STORAGE_CRS,
-    )
-
-
-def test_registered_frame_none_without_register():
-    # A country with no register: the overlay is omitted, other layers still render.
-    assert targets.registered_frame(_units(), iso3="KEN") is None
-
-
-@pytest.mark.skipif(
-    not config.REGISTER_INDIVIDUALS_CSV.exists(),
-    reason="synthetic register not present",
-)
-def test_registered_frame_follows_boundary_geometry():
-    frame = targets.registered_frame(_units(), iso3=config.REGISTER_ISO3)
-    assert frame is not None
-    assert set(frame.columns) == {CODE, *targets.REGISTERED_COLUMNS}
-
-    by_code = frame.set_index(CODE)
-    # The N'Djamena cell picks up registrations; the far cell gets none.
-    assert by_code.loc["NDJ", "registered_population"] > 0
-    assert by_code.loc["FAR", "registered_population"] == 0
-    # Coverage is registered / estimated where the register covers the boundary,
-    # and undefined (no registrations, nothing built) elsewhere -> RED.
-    assert 0 < by_code.loc["NDJ", "coverage_ratio"] <= 1
-    assert by_code.loc["FAR", "gap_classification"] == "RED"
-
-
-def _stats_units():
     return gpd.GeoDataFrame(
         {
             CODE: ["A", "B"],
@@ -65,8 +25,35 @@ def _stats_units():
     )
 
 
-def test_build_stats_without_register_is_estimation_only():
-    stats = targets.build_stats(_stats_units(), None, None)
+def _covered(**overrides):
+    """A coverage frame as features.coverage.compare would produce it."""
+    frame = pd.DataFrame({
+        CODE: ["A", "B"],
+        "estimated_population": [1000, 500],
+        "estimated_households": [200, 100],
+        "estimated_under5": [200, 100],
+        "registered_population": [850, 0],
+        "registered_under5": [170, 0],
+        "registered_households": [160, 0],
+        "under5_gap": [30, 100],
+        "coverage_ratio": [0.85, pd.NA],
+        "coverage_measure": ["under5", "under5"],
+        "gap_classification": ["GREEN", "RED"],
+        "official_target": [pd.NA, pd.NA],
+    })
+    return frame.assign(**overrides)
+
+
+def test_coverage_frame_is_none_without_an_enumeration_upload():
+    # No workbook uploaded: the coverage and risk layers are simply absent, and the
+    # estimation layers still render.
+    frame, resolution = targets.coverage_frame(_units(), enumeration_path=None)
+    assert frame is None
+    assert resolution.matched_count == 0
+
+
+def test_build_stats_without_enumeration_is_estimation_only():
+    stats = targets.build_stats(_units(), None, None)
     summary = stats["summary"]
     assert summary["totalEstimatedPopulation"] == 1500
     assert summary["totalRegisteredPopulation"] == 0
@@ -76,28 +63,41 @@ def test_build_stats_without_register_is_estimation_only():
     assert stats["riskDistribution"] == {}
 
 
-def test_build_stats_with_register_and_invisible():
-    registered = pd.DataFrame({
-        CODE: ["A", "B"],
-        "registered_population": [850, 0],
-        "registered_under5": [170, 0],
-        "registered_households": [160, 0],
-        "coverage_ratio": [0.85, pd.NA],
-        "coverage_ratio_under5": [0.85, pd.NA],
-        "gap_classification": ["GREEN", "RED"],
-    })
-    invisible = gpd.GeoDataFrame(
-        {"cluster_id": ["A-C0001"], "building_count": [12], "estimated_population": [65],
-         "geometry": [Point(0.5, 0.5)]},
-        geometry="geometry", crs=config.STORAGE_CRS)
-
-    stats = targets.build_stats(_stats_units(), registered, invisible)
+def test_build_stats_headline_coverage_uses_the_primary_measure():
+    stats = targets.build_stats(_units(), _covered(), None)
     summary = stats["summary"]
-    assert summary["totalRegisteredPopulation"] == 850
-    assert summary["totalPopulationGap"] == 650
-    assert summary["overallCoverageRatio"] == round(850 / 1500, 4)
-    assert summary["invisibleSettlementCount"] == 1
-    assert summary["invisibleEstimatedPopulation"] == 65
-    assert stats["gapDistribution"]["GREEN"] == {"count": 1, "population": 1000}
-    # Highest gap first.
+    assert summary["coverageMeasure"] == "under5"
+    # Under-5, not population: 170 children found against 300 estimated.
+    assert summary["overallCoverageRatio"] == round(170 / 300, 4)
+    assert summary["totalRegisteredUnder5"] == 170
+    assert summary["populationIsDerived"] is True
+
+
+def test_build_stats_reports_every_measure_side_by_side():
+    stats = targets.build_stats(_units(), _covered(), None)
+    measures = stats["measures"]
+    assert measures["households"]["enumerated"] == 160
+    assert measures["under5"]["enumerated"] == 170
+    assert measures["population"]["enumerated"] == 850
+
+
+def test_build_stats_ranks_by_under5_gap():
+    stats = targets.build_stats(_units(), _covered(), None)
     assert stats["topGapSettlements"][0]["boundaryCode"] == "B"
+    assert stats["gapDistribution"]["GREEN"] == {"count": 1, "population": 1000}
+
+
+def test_build_stats_marks_feature_four_dormant():
+    stats = targets.build_stats(_units(), _covered(), None)
+    assert stats["summary"]["invisibleEnabled"] is config.INVISIBLE_ENABLED
+    assert stats["summary"]["invisibleSettlementCount"] == 0
+
+
+def test_detect_invisible_is_dormant_without_household_points():
+    # Feature 4 needs household GPS the aggregate workbook cannot supply.
+    assert config.INVISIBLE_ENABLED is False
+    assert targets.detect_invisible(iso3="TCD") is None
+
+
+def test_detect_risk_is_none_without_coverage():
+    assert targets.detect_risk(_units(), None) is None

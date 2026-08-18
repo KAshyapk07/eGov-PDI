@@ -1,3 +1,12 @@
+"""Feature 4 - settlements the enumeration never reached. Dormant; see ``config.INVISIBLE_ENABLED``.
+
+Detection asks a question only point-level data can answer: is there a cluster of buildings
+with no enumerated household within 200 m? The current enumeration workbook is aggregate -
+counts per facility, no coordinates - so nothing here can run against it. The module now
+takes household points as an argument rather than reading a fixed register, so it works
+unchanged the day a point-level household export arrives.
+"""
+
 import argparse
 from datetime import datetime, timezone
 
@@ -9,7 +18,6 @@ from sklearn.cluster import DBSCAN
 import config
 from geo import resolve_metric_crs
 from sources import buildings as buildings_source
-from sources import register
 from sources.boundaries import load_boundaries
 
 CODE = config.BOUNDARY_CODE_FIELD
@@ -21,11 +29,10 @@ TABLE_COLUMNS = [
 ]
 
 
-def _assign_households(boundaries):
-    """Registered household points tagged with the district polygon that contains them."""
-    homes = register.load_households()
+def _assign_households(households, boundaries):
+    """Enumerated household points tagged with the boundary polygon that contains them."""
     joined = gpd.sjoin(
-        homes, boundaries[[CODE, "geometry"]], how="inner", predicate="within")
+        households, boundaries[[CODE, "geometry"]], how="inner", predicate="within")
     return joined.rename(columns={CODE: "boundary_code"}).drop(columns="index_right")
 
 
@@ -99,23 +106,26 @@ def _finalize(invisible, homes, metric_crs):
     return df[TABLE_COLUMNS], gdf
 
 
-def detect(scope="ndjamena", iso3=None):
-    boundaries = load_boundaries(iso3)
+def detect(households, iso3=None, units=None):
+    """Building clusters with no enumerated household nearby.
+
+    ``households`` is a GeoDataFrame of enumerated household points - the input the current
+    aggregate workbook cannot supply. ``units`` defaults to the country's districts. Only
+    units the households actually reach are examined: elsewhere every cluster would read as
+    invisible simply because nobody enumerated there.
+    """
+    boundaries = units if units is not None else load_boundaries(iso3)
     metric_crs = resolve_metric_crs(boundaries)
 
-    homes = _assign_households(boundaries).to_crs(metric_crs)
-
-    if scope == "ndjamena":
-        covered = set(homes["boundary_code"])
-        boundaries = boundaries[boundaries[CODE].isin(covered)]
+    homes = _assign_households(households, boundaries).to_crs(metric_crs)
+    reached = set(homes["boundary_code"])
+    boundaries = boundaries[boundaries[CODE].isin(reached)]
 
     buildings = buildings_source.clip_to_boundaries(boundaries, iso3)
     centroids = gpd.GeoSeries(
         buildings["centroid"].values, crs=config.STORAGE_CRS).to_crs(metric_crs)
     buildings = buildings.assign(mx=centroids.x.values, my=centroids.y.values)
-
-    if scope == "ndjamena":
-        buildings = buildings[buildings["boundary_code"].isin(set(homes["boundary_code"]))]
+    buildings = buildings[buildings["boundary_code"].isin(reached)]
 
     # Coverage filter first: keep only buildings the register never reached, then cluster those.
     buildings = _uncovered_buildings(buildings.reset_index(drop=True), homes)
@@ -146,18 +156,19 @@ def detect(scope="ndjamena", iso3=None):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--scope", choices=["national", "ndjamena"], default="ndjamena",
-                        help="ndjamena: only districts the register covers (the campaign footprint); "
-                             "national: every district (clusters outside the register read as invisible)")
+    parser.add_argument("households",
+                        help="point file of enumerated household locations (any format "
+                             "geopandas reads). Not available from the aggregate workbook - "
+                             "this feature is dormant until the country exports one.")
     parser.add_argument("--iso3", help="country ISO3 (default from PDI_ISO3 / config)")
     args = parser.parse_args()
 
-    table, gdf = detect(scope=args.scope, iso3=args.iso3)
+    households = gpd.read_file(args.households).to_crs(config.STORAGE_CRS)
+    table, gdf = detect(households, iso3=args.iso3)
     config.INVISIBLE_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     table.to_csv(config.INVISIBLE_SETTLEMENTS_CSV, index=False, encoding="utf-8-sig")
     gdf.to_file(config.INVISIBLE_SETTLEMENTS_GEOJSON, driver="GeoJSON")
 
-    print(f"scope:                    {args.scope}")
     print(f"invisible settlements:    {len(table):>12,}")
     print(f"buildings in clusters:    {table['building_count'].sum():>12,}")
     print(f"estimated population:     {table['estimated_population'].sum():>12,}")

@@ -2,7 +2,7 @@ import { useState } from "react";
 import InputsPanel from "./flow/InputsPanel.jsx";
 import LoadingView from "./flow/LoadingView.jsx";
 import ResultsView from "./flow/ResultsView.jsx";
-import { submitCompute, fetchStatus, fetchGeojson, fetchDashboardStats } from "./flow/api.js";
+import { submitCompute, fetchStatus, fetchGeojson } from "./flow/api.js";
 import "./flow/flow.css";
 
 const POLL_INTERVAL_MS = 3000;
@@ -21,15 +21,11 @@ export default function App() {
   const [result, setResult] = useState(null);
   const [geojson, setGeojson] = useState(null);
   const [householdSize, setHouseholdSize] = useState(undefined);
-  const [campaign, setCampaign] = useState({ campaignId: null, tenantId: "default" });
-  const [stats, setStats] = useState(null);
 
   const onCompute = async (params) => {
     setError(null);
     setIso3(params.iso3);
     setHouseholdSize(params.householdSize);
-    setCampaign({ campaignId: params.campaignId, tenantId: params.tenantId });
-    setStats(null);
     setMessage("preparing");
     setPercent(null);
     setStage("loading");
@@ -43,10 +39,6 @@ export default function App() {
       setResult(computed);
       setGeojson(geo);
       setStage("results");
-      // Read the documented dashboard summary back from the persisted tables.
-      fetchDashboardStats({ campaignId: params.campaignId, tenantId: params.tenantId })
-        .then(setStats)
-        .catch(() => setStats(null));
     } catch (failure) {
       setError(failure.message);
       setStage("input");
@@ -66,8 +58,6 @@ export default function App() {
           result={result}
           geojson={geojson}
           initialHouseholdSize={householdSize}
-          campaign={campaign}
-          stats={stats}
           onReset={reset}
         />
       </div>

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.pdi.engine.ComputeCommand;
 import org.pdi.engine.EngineException;
+import org.pdi.engine.EngineInput;
 import org.pdi.engine.EngineResult;
 import org.pdi.engine.PythonEngineRunner;
 import org.pdi.web.dto.BoundaryTarget;
@@ -56,21 +57,19 @@ public class TargetService {
         this.objectMapper = objectMapper;
     }
 
-    public String submit(MultipartFile sheet, ComputeCommand command) {
-        byte[] sheetBytes = readSheetBytes(sheet);
-        String sheetHash = sheetBytes == null ? null : sha256Hex(sheetBytes);
-        String cacheKey = cacheKey(command, sheetHash);
-        String paramsJson = paramsJson(command, sheetHash);
+    public String submit(Map<EngineInput, MultipartFile> files, ComputeCommand command) {
+        Uploads uploads = Uploads.stage(files);
+        String cacheKey = cacheKey(command, uploads);
+        String paramsJson = paramsJson(command, uploads);
 
         String jobId = UUID.randomUUID().toString();
         Path work = createWorkDir(jobId);
         Path logFile = work.resolve("engine.log");
-        writeInitialLog(logFile, command.iso3());
-        Path uploaded = sheetBytes == null ? null : saveUpload(sheetBytes);
+        writeInitialLog(logFile, command.iso3(), uploads);
 
         Job job = new Job(jobId, logFile);
         jobs.put(jobId, job);
-        executor.submit(() -> runJob(job, uploaded, command, cacheKey, paramsJson));
+        executor.submit(() -> runJob(job, uploads, command, cacheKey, paramsJson));
         return jobId;
     }
 
@@ -102,7 +101,7 @@ public class TargetService {
         return new Progress(line, null);
     }
 
-    private void runJob(Job job, Path uploaded, ComputeCommand command, String cacheKey, String paramsJson) {
+    private void runJob(Job job, Uploads uploads, ComputeCommand command, String cacheKey, String paramsJson) {
         try {
             // A forced recompute skips the lookup but still writes its result back, so
             // the stored entry is refreshed rather than duplicated or left stale.
@@ -116,7 +115,7 @@ public class TargetService {
                 appendLog(job, "recompute requested - ignoring cached result");
             }
 
-            EngineResult result = engine.compute(uploaded, command, job.logFile());
+            EngineResult result = engine.compute(uploads, command, job.logFile());
             Path filledSheet = result.sheet() == null ? null : Path.of(result.sheet());
             Path geojson = result.geojson() == null ? null : Path.of(result.geojson());
             Path settlements = result.invisibleGeojson() == null ? null : Path.of(result.invisibleGeojson());
@@ -131,9 +130,9 @@ public class TargetService {
             job.complete(response);
             saveToCache(cacheKey, result.iso3(), paramsJson, artifactId, response);
         } catch (RuntimeException e) {
-            job.fail(lastLine(e.getMessage()));
+            job.fail(readableFailure(lastLine(e.getMessage())));
         } finally {
-            deleteQuietly(uploaded);
+            uploads.deleteAll();
         }
     }
 
@@ -159,7 +158,8 @@ public class TargetService {
                 settlements ? base + "/_settlements" : null,
                 catchments ? base + "/_catchments" : null,
                 buildings ? base + "/_buildings" : null,
-                stats ? base + "/_stats" : null);
+                stats ? base + "/_stats" : null,
+                result.provenance());
     }
 
     // --- Result cache -------------------------------------------------------
@@ -213,7 +213,8 @@ public class TargetService {
                     cached.settlements() != null ? base + "/_settlements" : null,
                     cached.catchments() != null ? base + "/_catchments" : null,
                     cached.buildings() != null ? base + "/_buildings" : null,
-                    cached.statsJson() != null ? base + "/_stats" : null);
+                    cached.statsJson() != null ? base + "/_stats" : null,
+                    stored.provenance());
         } catch (IOException e) {
             throw new EngineException("could not rehydrate cached result", e);
         } finally {
@@ -221,7 +222,12 @@ public class TargetService {
         }
     }
 
-    private String cacheKey(ComputeCommand command, String sheetHash) {
+    /**
+     * Identity of a run: its parameters plus every uploaded file's hash. A changed
+     * enumeration sheet against unchanged boundaries yields a different key, so the
+     * corrected numbers recompute instead of being served from the previous run.
+     */
+    private String cacheKey(ComputeCommand command, Uploads uploads) {
         String raw = String.join("|",
                 command.iso3(),
                 command.year() == null ? "default" : command.year().toString(),
@@ -230,11 +236,11 @@ public class TargetService {
                 command.groups() == null ? "" : command.groups(),
                 command.campaignId() == null ? "" : command.campaignId(),
                 command.tenantId() == null ? "default" : command.tenantId(),
-                sheetHash == null ? "none" : sheetHash);
+                uploads.fingerprint());
         return sha256Hex(raw.getBytes(StandardCharsets.UTF_8));
     }
 
-    private String paramsJson(ComputeCommand command, String sheetHash) {
+    private String paramsJson(ComputeCommand command, Uploads uploads) {
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("year", command.year());
         params.put("householdSize", command.householdSize());
@@ -242,7 +248,7 @@ public class TargetService {
         params.put("groups", command.groups());
         params.put("campaignId", command.campaignId());
         params.put("tenantId", command.tenantId());
-        params.put("sheetHash", sheetHash);
+        params.put("uploads", uploads.hashes());
         try {
             return objectMapper.writeValueAsString(params);
         } catch (JsonProcessingException e) {
@@ -343,10 +349,12 @@ public class TargetService {
         }
     }
 
-    private void writeInitialLog(Path logFile, String iso3) {
+    private void writeInitialLog(Path logFile, String iso3, Uploads uploads) {
+        String inputs = uploads.isEmpty() ? "no uploads" : String.join(", ", uploads.hashes().keySet());
         try {
-            Files.writeString(logFile, "preparing " + iso3 + System.lineSeparator());
+            Files.writeString(logFile, "preparing " + iso3 + " (" + inputs + ")" + System.lineSeparator());
         } catch (IOException ignored) {
+            // The log is progress reporting only; failing to seed it must not fail the job.
         }
     }
 
@@ -358,33 +366,25 @@ public class TargetService {
         }
     }
 
-    private byte[] readSheetBytes(MultipartFile sheet) {
-        if (sheet == null || sheet.isEmpty()) {
-            return null;
-        }
-        try {
-            return sheet.getBytes();
-        } catch (IOException e) {
-            throw new UncheckedIOException("could not read the uploaded sheet", e);
-        }
-    }
-
-    private Path saveUpload(byte[] bytes) {
-        try {
-            Path target = Files.createTempFile("pdi-upload-", ".xlsx");
-            Files.write(target, bytes);
-            return target;
-        } catch (IOException e) {
-            throw new UncheckedIOException("could not store the uploaded sheet", e);
-        }
-    }
-
     private String readOrEmpty(Path log) {
         try {
             return Files.readString(log, StandardCharsets.UTF_8);
         } catch (IOException e) {
             return "";
         }
+    }
+
+    // The engine raises ordinary Python exceptions for bad uploads, so the last line of a
+    // failed run reads "ValueError: this boundary file is not in TCD ...". The class name
+    // is noise to whoever uploaded the file; the sentence after it is the actual message.
+    private static final java.util.regex.Pattern PYTHON_EXCEPTION =
+            java.util.regex.Pattern.compile("^[A-Za-z_][A-Za-z0-9_.]*(Error|Exception):\\s+");
+
+    private String readableFailure(String line) {
+        if (line == null || line.isBlank()) {
+            return "The engine failed without reporting a reason. Check the API logs.";
+        }
+        return PYTHON_EXCEPTION.matcher(line).replaceFirst("");
     }
 
     private String lastLine(String text) {

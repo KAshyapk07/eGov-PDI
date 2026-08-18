@@ -1,9 +1,9 @@
 # Local-only design notes, diagrams and decks.
 docs
 
-# Synthetic data is the only retained local source; all others fetched on demand.
-Data_Source/Synthetic data
-Data_Source/Chad/VIDA/*.parquet
+# Local input data. Sources are fetched on demand by ISO3, and the supplied microplan
+# files are real health-facility records that stay off the repo.
+Data_Source/
 
 # Transient on-demand download cache (WorldPop rasters, boundary GeoJSON, VIDA parquet).
 .cache/

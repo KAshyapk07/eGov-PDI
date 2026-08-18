@@ -4,7 +4,6 @@ import os
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DATA_SOURCE = REPO_ROOT / "Data_Source"
 
 # --- Country selection  --------
 COUNTRY_ISO3 = os.getenv("PDI_ISO3", "TCD").upper()
@@ -37,10 +36,96 @@ SHEET_CODE_COLUMN = "Service Boundary Code"
 # A point up to this far outside every district is snapped to the nearest; dropped beyond.
 CATCHMENT_SNAP_TOLERANCE_M = 2000
 
+# --- Area name resolution -----------------------------------------------------
+# The uploaded geojson and spreadsheet join on a hand-typed area name. Leading
+# facility-type words are dropped before matching (longest first, so "CENTRE DE SANTE"
+# is tried before "CS"). Extend for other languages as needed; an unlisted prefix only
+# means the name is matched in full, never a wrong match.
+FACILITY_NAME_PREFIXES = (
+    "CENTRE DE SANTE", "CENTRE SANTE", "HEALTH CENTRE", "HEALTH CENTER", "HEALTH POST",
+    "HOPITAL", "HOSPITAL", "CLINIC", "CSI", "CHP", "CS", "HP", "HC",
+)
+
+# Optional deployment-specific overrides, mapping an alternate spelling onto the one the
+# geojson uses. Empty by default: normalisation plus the reported near-miss suggestions
+# handle the ordinary cases, and a wrong alias silently merges two real areas into one.
+# Only add an entry with evidence that the two records are the same place.
+FACILITY_ALIASES = {}
+
+# --- Enumeration sheet ---------------------------------------------------------
+# Column aliases, matched against accent-folded uppercase headers. The uploaded sheet
+# is filled in by hand in French, so a header is matched when it *contains* an alias.
+ENUMERATION_COLUMNS = {
+    "facility_name": ("HEALTH CENTER", "HEALTH CENTRE", "CENTRE DE SANTE",
+                      "FORMATION SANITAIRE", "FACILITY"),
+    "official_population": ("POPULATION TOTALE", "TOTAL POPULATION"),
+    "official_target": ("CIBLE", "TARGET"),
+    "users_total": ("NOMBRE D UTILISATEURS", "NUMBER OF USERS"),
+    "users_active": ("UTILISATEURS ACTIFS", "ACTIVE USERS"),
+    "census_records": ("ENREGISTREMENTS DE RECENSEMENT", "CENSUS RECORDS"),
+    "eligible_children": ("ENFANTS ADMISSIBLES", "ELIGIBLE CHILDREN"),
+    "invited_members": ("MEMBRES INVITES", "INVITED MEMBERS"),
+    "absent_households": ("MENAGES ABSENTS", "ABSENT HOUSEHOLDS"),
+}
+ENUMERATION_HEADER_SCAN_ROWS = 10
+# A column is taken to hold the area names when at least this share of its values resolve
+# to an area in the uploaded geojson. Set high enough that an unrelated text column cannot
+# win by coincidence, low enough to tolerate a few unmatched or misspelt rows.
+ENUMERATION_MIN_NAME_MATCH = 0.5
+# Rows whose facility cell matches these are totals, not facilities.
+ENUMERATION_TOTAL_LABELS = ("TOTAL", "TOTAUX", "GRAND TOTAL")
+# A sheet carrying one row per enumerator rather than per facility is skipped: it adds
+# nothing the facility sheets lack, and its headers are shifted one column in the
+# reference file (the column labelled "Enfants admissibles" in fact holds census records).
+ENUMERATION_PER_USER_HEADERS = ("ID DE L UTILISATEUR", "USER ID")
+# How a row that pools several facilities is handled:
+#   "flag"      - members carry no counts and are reported as pooled (no invented split)
+#   "apportion" - the pooled counts are split by each member's official target share
+ENUMERATION_POOLED_POLICY = "flag"
+
+# --- Uploaded boundary geojson -------------------------------------------------
+# Polygons are the analysis areas; Points, when present, are their anchors, joined to
+# their polygon on the area name.
+#
+# The property holding that name differs between exports, so it is detected rather than
+# assumed: these candidates are tried in order, and if none is present the engine falls
+# back to whichever string property is unique across the polygons. Set
+# BOUNDARY_UPLOAD_NAME_FIELD to pin it explicitly for a known feed.
+BOUNDARY_UPLOAD_NAME_FIELD = os.getenv("PDI_BOUNDARY_NAME_FIELD") or None
+
+# An upload is checked against the country it was submitted for before anything is
+# computed. A file from the wrong country still produces a full, confident-looking
+# dashboard - WorldPop is sampled wherever the polygons happen to fall - so the
+# mismatch has to be caught here rather than discovered in the output.
+#
+# Share of the upload that must fall inside the country's districts. A correct pairing
+# sits near 1.0 and a mismatched one near 0.0, so the threshold is deliberately loose:
+# it separates the two cases without rejecting legitimate border areas.
+UPLOAD_MIN_COUNTRY_OVERLAP = float(os.getenv("PDI_UPLOAD_MIN_COUNTRY_OVERLAP", "0.5"))
+# Slack (degrees, roughly 2 km) for cells that genuinely straddle a national border and
+# for the generalisation in the geoBoundaries outline itself.
+UPLOAD_COUNTRY_BUFFER_DEG = float(os.getenv("PDI_UPLOAD_COUNTRY_BUFFER_DEG", "0.02"))
+BOUNDARY_UPLOAD_NAME_CANDIDATES = (
+    "facility_name", "facility", "health_facility", "name", "area_name", "boundary_name",
+    "admin_name", "label", "title", "nom", "libelle", "denominacion", "nombre",
+    "shapeName", "NAME", "Name",
+)
+# Properties copied through when present. Anything else on the feature is ignored.
+BOUNDARY_UPLOAD_PROVENANCE = (
+    "gps_source", "anchor_source", "boundary_method", "point_count", "area_km2", "warnings")
+# An anchor from any other source is a fallback position, not a surveyed facility location.
+BOUNDARY_TRUSTED_ANCHOR_SOURCES = ("field_gps",)
+# point_count is the sample the cell was drawn from, not an enumeration total (in the
+# reference file it sums to exactly 10,000 - an export cap). Cells built from fewer than
+# this many points have unreliable shapes and are flagged for review.
+CATCHMENT_LOW_SAMPLE_POINTS = 50
+
 DEFAULT_TARGET_GROUPS = ["total", "under5", "age_00", "age_01_04"]
 
 COUNTRY = COUNTRY_ISO3
-CAMPAIGN_ID = "POLIO_CHAD_2024"
+# Fallback campaign id, matching the one the API mints. The engine is country-agnostic,
+# so this is derived rather than naming any one country's campaign.
+CAMPAIGN_ID = f"PDI-{COUNTRY_ISO3}-{TARGET_YEAR}"
 TENANT_ID = "default"
 WORLDPOP_VERSION = "2026-CN-100m-R2025A"
 OPEN_BUILDINGS_SOURCE = "vida-google-microsoft-osm"
@@ -111,19 +196,22 @@ DBSCAN_EPS_METERS = 100
 DBSCAN_MIN_SAMPLES = 3
 INVISIBLE_BUFFER_METERS = 200
 INVISIBLE_STATUS_INITIAL = "UNVERIFIED"
+# Feature 4 is dormant. Detection asks "is there a building no enumerator came within 200 m
+# of?", which needs household-level GPS. The enumeration workbook is aggregate - counts per
+# facility, no coordinates - so the question cannot be asked from it. The code and its table
+# are intact; set this True once a point-level household export is available.
+INVISIBLE_ENABLED = os.getenv("PDI_INVISIBLE", "").lower() in ("1", "true", "yes")
 
 CONCAVE_HULL_RATIO = 0.1
 
-REGISTERED_SOURCE = "gps"
 GAP_GREEN_THRESHOLD = 0.85
 GAP_YELLOW_THRESHOLD = 0.50
 
-REGISTER_ISO3 = "TCD"
-REGISTER_DIR = DATA_SOURCE / "Synthetic data" / "synthetic_data"
-REGISTER_INDIVIDUALS_CSV = REGISTER_DIR / "individuals_flat.csv"
-REGISTER_HOUSEHOLD_SQL = REGISTER_DIR / "03_household_addresses.sql"
-REGISTER_AGE_REFERENCE = "2024-06-01"
-
+# Which like-for-like comparison drives gap_classification and the headline coverage_ratio.
+# "under5" is the default: both sides are directly measured counts of children 0-59 months,
+# and it is the cohort the campaign plans against. "households" is also directly measured;
+# "population" relies on the derived headcount and is the weakest of the three.
+COVERAGE_PRIMARY_MEASURE = "under5"
 
 RISK_WEIGHTS = {
     "population_gap": 0.30,

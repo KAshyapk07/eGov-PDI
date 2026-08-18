@@ -2,6 +2,7 @@ package org.pdi.engine;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.pdi.config.EngineProperties;
+import org.pdi.service.Uploads;
 import org.springframework.stereotype.Component;
 
 import java.io.File;
@@ -26,7 +27,7 @@ public class PythonEngineRunner {
         this.objectMapper = objectMapper;
     }
 
-    public EngineResult compute(Path sheet, ComputeCommand command, Path logFile) {
+    public EngineResult compute(Uploads uploads, ComputeCommand command, Path logFile) {
         Path work = logFile.getParent();
         Path outSheet = work.resolve("targets.xlsx");
         Path geojson = work.resolve("units.geojson");
@@ -37,14 +38,14 @@ public class PythonEngineRunner {
         Path resultJson = work.resolve("result.json");
 
         Process process = start(
-                buildCommand(sheet, outSheet, geojson, settlements, catchments, buildings,
+                buildCommand(uploads, outSheet, geojson, settlements, catchments, buildings,
                         stats, resultJson, command),
                 logFile);
         awaitCompletion(process, logFile);
         return readResult(resultJson);
     }
 
-    private List<String> buildCommand(Path sheet, Path outSheet, Path geojson, Path settlements,
+    private List<String> buildCommand(Uploads uploads, Path outSheet, Path geojson, Path settlements,
                                       Path catchments, Path buildings, Path stats, Path resultJson,
                                       ComputeCommand command) {
         List<String> args = new ArrayList<>(List.of(
@@ -56,9 +57,19 @@ public class PythonEngineRunner {
                 "--buildings-geojson", buildings.toString(),
                 "--stats-json", stats.toString(),
                 "--json", resultJson.toString()));
-        if (sheet != null) {
-            args.add("--sheet");
-            args.add(sheet.toAbsolutePath().toString());
+
+        boolean hasUnits = false;
+        for (EngineInput input : EngineInput.values()) {
+            Path staged = uploads.path(input);
+            if (staged == null) {
+                continue;
+            }
+            args.add(input.engineFlag());
+            args.add(staged.toAbsolutePath().toString());
+            hasUnits |= input == EngineInput.BOUNDARIES || input == EngineInput.SHEET;
+        }
+        // The workbook is only produced when there are catchment units to describe.
+        if (hasUnits) {
             args.add("--out");
             args.add(outSheet.toString());
         }

@@ -2,28 +2,44 @@ import { useState } from "react";
 import { COUNTRIES, countryLabel } from "./countries.js";
 
 const DEFAULT_YEAR = 2026;
-const campaignFor = (iso3, year) => `PDI-${iso3}-${year}`;
+
+const BOUNDARY_EXTENSIONS = [".geojson", ".json"];
+const WORKBOOK_EXTENSIONS = [".xlsx", ".xls"];
+
+const hasExtension = (file, allowed) =>
+  allowed.some((extension) => file.name.toLowerCase().endsWith(extension));
 
 export default function InputsPanel({ onCompute, error }) {
   const [iso3, setIso3] = useState("TCD");
   const [year, setYear] = useState(DEFAULT_YEAR);
-  const [sheet, setSheet] = useState(null);
+  const [boundaries, setBoundaries] = useState(null);
+  const [enumeration, setEnumeration] = useState(null);
+  const [fileErrors, setFileErrors] = useState({});
   const [householdSize, setHouseholdSize] = useState("");
-  const [tenantId, setTenantId] = useState("default");
-  const [campaignId, setCampaignId] = useState("");
 
-  // The campaign id defaults to PDI-<ISO3>-<YEAR> but stays editable; this is the
-  // key the results dashboard reads back from the persisted tables.
-  const resolvedCampaign = campaignId.trim() || campaignFor(iso3, year);
+  // Rejecting the wrong file type here saves a round trip, but the API validates it
+  // again - the browser is not the place to enforce a contract.
+  const pickFile = (key, allowed, setter) => (event) => {
+    const file = event.target.files?.[0] ?? null;
+    if (file && !hasExtension(file, allowed)) {
+      setter(null);
+      setFileErrors((current) => ({
+        ...current,
+        [key]: `${file.name} is not a ${allowed.join(" or ")} file.`,
+      }));
+      return;
+    }
+    setter(file);
+    setFileErrors((current) => ({ ...current, [key]: null }));
+  };
 
   const run = (force) => onCompute({
     iso3,
     year,
-    sheet,
+    boundaries,
+    enumeration,
     householdSize: householdSize ? Number(householdSize) : undefined,
     withBuildings: true,
-    campaignId: resolvedCampaign,
-    tenantId: tenantId.trim() || "default",
     force,
   });
 
@@ -32,14 +48,17 @@ export default function InputsPanel({ onCompute, error }) {
     run(false);
   };
 
+  // Enumeration without boundaries has nothing to attach its counts to.
+  const orphanEnumeration = Boolean(enumeration && !boundaries);
+
   return (
     <section className="compute-panel">
       <div className="compute-panel-head">
         <h2>Compute campaign targets</h2>
         <p>
-          Pick a country and, optionally, a microplan boundary sheet. The engine returns
-          per-boundary household and age-group targets from WorldPop population and VIDA building
-          footprints.
+          Pick a country, then add the campaign&rsquo;s two files: the catchment boundaries and
+          what the field enumerated inside them. The engine estimates population from WorldPop
+          and VIDA building footprints, and compares the enumeration against it.
         </p>
       </div>
 
@@ -72,18 +91,41 @@ export default function InputsPanel({ onCompute, error }) {
         </div>
 
         <label className="field">
-          <span className="field-label">Boundary sheet <em>optional</em></span>
+          <span className="field-label">Catchment boundaries <em>optional</em></span>
           <input
             type="file"
-            accept=".xlsx"
+            accept=".geojson,.json"
             className="field-file"
-            onChange={(event) => setSheet(event.target.files?.[0] ?? null)}
+            onChange={pickFile("boundaries", BOUNDARY_EXTENSIONS, setBoundaries)}
           />
           <span className="field-hint">
-            {sheet
-              ? `Selected: ${sheet.name} — adds a Voronoi catchment layer per service point.`
-              : "The whole country is always computed by district. Add a sheet to also get a Voronoi catchment layer, one cell per health centre, with buildings mapped to their nearest centre."}
+            {boundaries
+              ? `Selected: ${boundaries.name} — its polygons become the analysis units.`
+              : "GeoJSON of catchment polygons plus a facility point each. Without it the whole country is computed by district."}
           </span>
+          {fileErrors.boundaries && <span className="field-error">{fileErrors.boundaries}</span>}
+        </label>
+
+        <label className="field">
+          <span className="field-label">Enumeration workbook <em>optional</em></span>
+          <input
+            type="file"
+            accept=".xlsx,.xls"
+            className="field-file"
+            onChange={pickFile("enumeration", WORKBOOK_EXTENSIONS, setEnumeration)}
+          />
+          <span className="field-hint">
+            {enumeration
+              ? `Selected: ${enumeration.name} — households and children enumerated per facility.`
+              : "Per-facility field counts. Adding it turns on the coverage and risk layers; without it the engine only estimates."}
+          </span>
+          {fileErrors.enumeration && <span className="field-error">{fileErrors.enumeration}</span>}
+          {orphanEnumeration && (
+            <span className="field-error">
+              An enumeration workbook needs catchment boundaries to attach its counts to. Add the
+              boundary geojson, or the enumeration will be ignored.
+            </span>
+          )}
         </label>
 
         <label className="field">
@@ -102,28 +144,6 @@ export default function InputsPanel({ onCompute, error }) {
             re-run needed.
           </span>
         </label>
-
-        <div className="field-row">
-          <label className="field field-grow">
-            <span className="field-label">Campaign ID <em>optional</em></span>
-            <input
-              type="text"
-              className="field-input"
-              value={campaignId}
-              onChange={(event) => setCampaignId(event.target.value)}
-              placeholder={campaignFor(iso3, year)}
-            />
-          </label>
-          <label className="field">
-            <span className="field-label">Tenant</span>
-            <input
-              type="text"
-              className="field-input tenant-input"
-              value={tenantId}
-              onChange={(event) => setTenantId(event.target.value)}
-            />
-          </label>
-        </div>
 
         {error && <div className="input-error">{error}</div>}
 

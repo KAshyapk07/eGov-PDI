@@ -5,7 +5,6 @@ import CoverageView from "./CoverageView.jsx";
 import InvisibleView from "./InvisibleView.jsx";
 import CatchmentsView from "./CatchmentsView.jsx";
 import RiskView from "./RiskView.jsx";
-import DashboardSummary from "./DashboardSummary.jsx";
 import StatCards from "../components/StatCards.jsx";
 import FilterControls, { filterLabel } from "../components/FilterControls.jsx";
 import { subPopulation } from "../lib/demographics.js";
@@ -30,7 +29,7 @@ const hasRegistration = (result, geojson) =>
   result.registeredAvailable ||
   geojson.features.some((f) => f.properties.registered_population != null);
 
-export default function ResultsView({ result, geojson, initialHouseholdSize, campaign, stats, onReset }) {
+export default function ResultsView({ result, geojson, initialHouseholdSize, onReset }) {
   const [tab, setTab] = useState("explorer");
   // Age/sex denominator filter (band indices). Default: whole population.
   const [filter, setFilter] = useState({ sex: "both", from: 0, to: 19 });
@@ -71,8 +70,10 @@ export default function ResultsView({ result, geojson, initialHouseholdSize, cam
   const showCatchments = !!result.catchmentsUrl;
   const showRisk = result.riskAvailable && hasRisk(geojson);
 
+  // Everything on screen is derived from this run's uploads, so the explorer names the
+  // unit the upload actually supplied rather than always claiming "district".
   const tabs = [
-    { id: "explorer", label: "District explorer", Icon: IconFilter },
+    { id: "explorer", label: catchments ? "Catchment explorer" : "District explorer", Icon: IconFilter },
     ...(showCatchments ? [{ id: "catchments", label: "Catchments", Icon: IconLayers }] : []),
     ...(showCoverage ? [{ id: "coverage", label: "Coverage gap", Icon: IconGauge }] : []),
     ...(showInvisible ? [{ id: "invisible", label: "Invisible settlements", Icon: IconPin }] : []),
@@ -96,9 +97,7 @@ export default function ResultsView({ result, geojson, initialHouseholdSize, cam
       <header className="results-bar">
         <div className="results-id">
           <span className="results-country">{countryName(result.iso3)}</span>
-          <span className="results-meta mono">
-            {result.iso3}{campaign?.campaignId ? ` · ${campaign.campaignId}` : ""}
-          </span>
+          <span className="results-meta mono">{result.iso3}</span>
         </div>
         <div className="results-stats">
           <Stat value={fmtInt(result.boundaryCount ?? geojson.features.length)} label={unitWord} />
@@ -142,7 +141,6 @@ export default function ResultsView({ result, geojson, initialHouseholdSize, cam
         <RiskView geojson={geojson} />
       ) : (
         <div className="results-scroll">
-          <DashboardSummary stats={stats} />
           <StatCards
             features={data.features}
             value={value}
@@ -150,7 +148,7 @@ export default function ResultsView({ result, geojson, initialHouseholdSize, cam
             nationalTotal={groupTotal}
             totalPop={totalPop}
             nameOf={nameOf}
-            scope="across boundaries"
+            scope={`across ${unitWord}`}
           />
           <FilterControls
             sex={sex}
@@ -159,7 +157,7 @@ export default function ResultsView({ result, geojson, initialHouseholdSize, cam
             set={set}
             nationalTotal={groupTotal}
             sharePct={totalPop ? groupTotal / totalPop : 0}
-            scopeLabel="across boundaries"
+            scopeLabel={`across ${unitWord}`}
           />
           <div className="split results-split-map">
             <ResultsMap

@@ -52,22 +52,68 @@ def _renormalized_weights(active_names):
     return {name: config.RISK_WEIGHTS[name] / total for name in active_names}
 
 
-def _factors_json(scores, weights, building_density, distance_km):
-    """Per-factor breakdown (score, renormalised weight, provisional flag) for the risk_factors jsonb."""
+def _column(df, name):
+    """Numeric view of an optional column, or ``None`` when it is absent or entirely empty."""
+    if name not in df.columns:
+        return None
+    series = pd.to_numeric(df[name], errors="coerce")
+    return None if series.isna().all() else series
+
+
+def _past_performance(df):
+    """Factor 2 - enumerator engagement: risk rises as the active share of users falls.
+
+    Read from the enumeration workbook's active-vs-provisioned user counts. A facility that
+    was given 21 accounts and activated none of them is the clearest predictor in the sheet
+    that its area will be under-covered.
+    """
+    active = _column(df, "active_user_pct")
+    if active is None:
+        return None
+    return (1 - active.clip(0, 1)).fillna(config.RISK_MISSING_FACTOR_DEFAULT)
+
+
+def _missed_children(df):
+    """Factor 5 - households the team reached but could not enumerate.
+
+    The absent share of visited households. Distinct from the population gap: that measures
+    how much of the area was never reached, this measures failure at the door.
+    """
+    absent = _column(df, "absent_households")
+    if absent is None:
+        return None
+    visited = df["registered_households"].fillna(0) + absent.fillna(0)
+    return (absent / visited).where(visited > 0).fillna(
+        config.RISK_MISSING_FACTOR_DEFAULT).clip(0, 1)
+
+
+def _factors_json(scores, weights, provisional, building_density, distance_km, context):
+    """Per-factor breakdown (score, renormalised weight, provenance) for the risk_factors jsonb."""
     factors = {}
     for name, score in scores.items():
         entry = {
             "score": round(float(score), 4),
             "weight": round(float(weights[name]), 4),
-            "provisional": name in config.RISK_PROVISIONAL_FACTORS,
+            "provisional": name in provisional,
         }
         if name == "building_density":
             entry["buildings_per_km2"] = round(float(building_density), 2)
         elif name == "facility_distance":
             entry["distance_to_nearest_km"] = None if pd.isna(distance_km) else round(
                 float(distance_km), 3)
+        elif name == "past_performance":
+            entry["active_user_pct"] = _maybe(context.get("active_user_pct"))
+        elif name == "missed_children":
+            entry["absent_households"] = _maybe(context.get("absent_households"), integer=True)
         factors[name] = entry
     return factors
+
+
+def _maybe(value, integer=False):
+    """JSON-safe scalar: ``None`` for missing, otherwise a rounded number."""
+    if value is None or pd.isna(value):
+        return None
+    return int(value) if integer else round(float(value), 4)
 
 
 def score(gap_gdf, est, centers=None):
@@ -91,15 +137,24 @@ def score(gap_gdf, est, centers=None):
     else:
         access_score = None
 
-    # Factors 2 and 5 - no data feed yet: neutral and provisional (D5).
+    # Factors 2 and 5 now read from the enumeration workbook. Either falls back to a
+    # neutral, provisional value only when the sheet does not carry its column.
+    performance_score = _past_performance(df)
+    missed_score = _missed_children(df)
     neutral = pd.Series(config.RISK_MISSING_FACTOR_DEFAULT, index=df.index)
+
+    provisional = set()
+    for name, series in (("past_performance", performance_score),
+                         ("missed_children", missed_score)):
+        if series is None:
+            provisional.add(name)
 
     components = {
         "population_gap": gap_score,
-        "past_performance": neutral,
+        "past_performance": performance_score if performance_score is not None else neutral,
         "facility_distance": access_score,   # None -> factor dropped, weights renormalise
         "building_density": density_score,
-        "missed_children": neutral,
+        "missed_children": missed_score if missed_score is not None else neutral,
     }
     active = {name: series for name, series in components.items() if series is not None}
     weights = _renormalized_weights(active)
@@ -110,8 +165,10 @@ def score(gap_gdf, est, centers=None):
     per_row = pd.DataFrame(active)
     df["risk_factors"] = [
         json.dumps(_factors_json(
-            per_row.loc[i], weights, building_density.loc[i],
-            distance_km.loc[i] if distance_km is not None else float("nan")))
+            per_row.loc[i], weights, provisional, building_density.loc[i],
+            distance_km.loc[i] if distance_km is not None else float("nan"),
+            {"active_user_pct": df["active_user_pct"].get(i) if "active_user_pct" in df else None,
+             "absent_households": df["absent_households"].get(i) if "absent_households" in df else None}))
         for i in df.index
     ]
     df["risk_computed_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -140,13 +197,15 @@ def build(centers=None):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--sheet", help="microplan sheet; its points enable the facility-distance factor")
+    parser.add_argument("--boundaries",
+                        help="uploaded catchment geojson; its facility anchors enable "
+                             "the facility-distance factor")
     args = parser.parse_args()
 
     centers = None
-    if args.sheet:
-        from sources.catchments import load_catchment_points
-        centers = load_catchment_points(args.sheet)
+    if args.boundaries:
+        from sources.catchments import load_boundary_upload
+        centers = load_boundary_upload(args.boundaries).anchors
 
     table, gdf = build(centers)
     config.GAP_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)

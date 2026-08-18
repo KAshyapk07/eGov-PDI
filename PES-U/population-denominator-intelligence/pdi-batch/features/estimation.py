@@ -15,6 +15,11 @@ IDENTITY_COLUMNS = [
     CODE, config.BOUNDARY_NAME_FIELD, "is_catchment",
     "microplan_district", "microplan_province",
     "msp_district", "msp_province", "match_status",
+    # Provenance from an uploaded boundary geojson. Carried through estimation so a single
+    # row states both the population figure and how far the cell it was measured over can
+    # be trusted - the two belong together wherever the estimate is read.
+    "gps_source", "anchor_source", "anchor_is_estimated", "point_count", "low_sample",
+    "warnings", "center_lon", "center_lat",
 ]
 
 

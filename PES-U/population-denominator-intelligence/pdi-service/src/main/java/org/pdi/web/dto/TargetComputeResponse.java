@@ -1,6 +1,7 @@
 package org.pdi.web.dto;
 
 import java.util.List;
+import java.util.Map;
 
 public record TargetComputeResponse(String jobId,
                                     String iso3,
@@ -19,5 +20,6 @@ public record TargetComputeResponse(String jobId,
                                     String settlementsUrl,
                                     String catchmentsUrl,
                                     String buildingsUrl,
-                                    String statsUrl) {
+                                    String statsUrl,
+                                    Map<String, Object> provenance) {
 }
