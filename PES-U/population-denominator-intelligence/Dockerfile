@@ -41,9 +41,13 @@ ENV PDI_ENGINE_PYTHON=/opt/venv/bin/python \
     PDI_ARTIFACTS_DIR=/data/artifacts \
     PDI_ENGINE_TIMEOUT=0
 
-# Mount a persistent volume here. WorldPop rasters and building parquet land in the
-# cache, and re-downloading them on every cold start costs hours (Chad alone is ~2.3 GB).
-VOLUME ["/data"]
+# Default working directories for the cache and artifacts. There is deliberately no
+# VOLUME instruction: Railway rejects one outright ("docker VOLUME is not supported, use
+# Railway Volumes"), and the documented demo deployment runs volumeless anyway - it
+# overrides PDI_CACHE_DIR/PDI_ARTIFACTS_DIR to /tmp and is pre-seeded through the Postgres
+# result cache on Neon (docs/DEPLOYMENT.md, "Demo mode"). Anywhere with real storage,
+# mount it at /data from outside the image instead.
+RUN mkdir -p /data/cache /data/artifacts
 
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s \
