@@ -51,7 +51,7 @@ Above the tabs, a summary strip reads the persisted totals back from PostGIS via
 Household size can be re-applied client-side (`lib/estimate.js`) so you can see the effect of a
 different average without re-running the engine; anything else requires a recompute.
 
-## Layout
+## Layout 
 
 ```
 src/
