@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { MapContainer, TileLayer, GeoJSON } from "react-leaflet";
+import { BASEMAPS, LABELS_LAYER } from "../lib/basemaps.js";
 import { makeScale } from "../lib/colors.js";
 
 export const districtName = (p) =>
@@ -7,24 +8,6 @@ export const districtName = (p) =>
 
 const MSP_ONLY_FILL = "#475569";   // slate-600 — dark but lighter than the outline
 const MSP_ONLY_LINE = "#1e293b";   // slate-800
-
-// Base layers for the verification toggle: the usual light choropleth basemap,
-// and Esri World Imagery so you can eyeball real rooftops against the estimate.
-const BASEMAPS = {
-  light: {
-    label: "Map",
-    url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
-    attribution: "&copy; OpenStreetMap &copy; CARTO",
-  },
-  satellite: {
-    label: "Satellite",
-    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-    attribution: "Imagery &copy; Esri, Maxar, Earthstar Geographics",
-  },
-};
-// Street / place labels drawn on top of imagery so the satellite view stays legible.
-const LABELS_URL =
-  "https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png";
 
 function BasemapControl({ base, setBase, showFill, setShowFill }) {
   return (
@@ -133,8 +116,8 @@ export default function ChoroplethMap({
   return (
     <div className="map-wrap">
       <MapContainer center={center} zoom={zoom} scrollWheelZoom preferCanvas>
-        <TileLayer key={base} attribution={BASEMAPS[base].attribution} url={BASEMAPS[base].url} />
-        {satellite && <TileLayer url={LABELS_URL} />}
+        <TileLayer key={base} {...BASEMAPS[base].layer} />
+        {satellite && <TileLayer {...LABELS_LAYER} />}
         {mspOnly && mspOnly.features?.length > 0 && (
           <GeoJSON
             data={mspOnly}

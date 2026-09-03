@@ -1,28 +1,13 @@
 import { useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import { MapContainer, TileLayer, GeoJSON, CircleMarker } from "react-leaflet";
+import { BASEMAPS, LABELS_LAYER } from "../lib/basemaps.js";
 import { SIZE_BUCKETS, bucketOf } from "../lib/invisible.js";
 import { fmtInt } from "../lib/format.js";
 
 // Registered households are drawn in teal (the design-system --secondary) so the story
 // reads: violet settlements sit where NO teal dot falls within 200 m.
 const REGISTER_COLOR = "#0d9488";
-
-// Map (light) default; toggle to satellite to see real rooftops the register never counted.
-const BASEMAPS = {
-  light: {
-    label: "Map",
-    url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
-    attribution: "&copy; OpenStreetMap &copy; CARTO",
-  },
-  satellite: {
-    label: "Satellite",
-    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-    attribution: "Imagery &copy; Esri, Maxar, Earthstar Geographics",
-  },
-};
-const LABELS_URL =
-  "https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png";
 
 function Controls({ base, setBase, showRegister, setShowRegister }) {
   return (
@@ -144,8 +129,8 @@ export default function InvisibleMap({
   return (
     <div className="map-wrap">
       <MapContainer center={center} zoom={zoom} scrollWheelZoom preferCanvas>
-        <TileLayer key={base} attribution={BASEMAPS[base].attribution} url={BASEMAPS[base].url} />
-        {satellite && <TileLayer url={LABELS_URL} />}
+        <TileLayer key={base} {...BASEMAPS[base].layer} />
+        {satellite && <TileLayer {...LABELS_LAYER} />}
         {showRegister && register && (
           <GeoJSON key={`reg-${base}`} data={register} pointToLayer={registerToLayer} />
         )}

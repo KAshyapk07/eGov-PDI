@@ -1,5 +1,6 @@
 import { useMemo, useRef } from "react";
 import { MapContainer, TileLayer, GeoJSON } from "react-leaflet";
+import { LIGHT_BASEMAP } from "../lib/basemaps.js";
 import L from "leaflet";
 import { geoBounds, MapDownloadBar } from "./ResultsMap.jsx";
 import { facilityColors } from "../lib/colors.js";
@@ -128,10 +129,7 @@ export default function CatchmentsMap({
   return (
     <div className="map-wrap">
       <MapContainer bounds={bounds} className="results-map" scrollWheelZoom preferCanvas>
-        <TileLayer
-          attribution="&copy; OpenStreetMap &copy; CARTO"
-          url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-        />
+        <TileLayer {...LIGHT_BASEMAP} />
         {base && (
           <GeoJSON
             data={base}

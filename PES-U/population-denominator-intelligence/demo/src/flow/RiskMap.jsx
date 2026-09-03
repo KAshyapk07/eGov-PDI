@@ -1,5 +1,6 @@
 import { useMemo, useRef } from "react";
 import { MapContainer, TileLayer, GeoJSON } from "react-leaflet";
+import { LIGHT_BASEMAP } from "../lib/basemaps.js";
 import { geoBounds } from "./ResultsMap.jsx";
 import { PRIORITY_ORDER, riskMeta } from "../lib/risk.js";
 
@@ -71,10 +72,7 @@ export default function RiskMap({ geojson, counts, active, setActive, onSelect, 
   return (
     <div className="map-wrap">
       <MapContainer bounds={bounds} className="results-map" scrollWheelZoom preferCanvas>
-        <TileLayer
-          attribution="&copy; OpenStreetMap &copy; CARTO"
-          url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-        />
+        <TileLayer {...LIGHT_BASEMAP} />
         <GeoJSON
           key={active || "all"}
           ref={geoRef}

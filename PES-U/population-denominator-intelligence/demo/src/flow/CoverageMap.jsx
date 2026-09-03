@@ -1,5 +1,6 @@
 import { useMemo, useRef } from "react";
 import { MapContainer, TileLayer, GeoJSON } from "react-leaflet";
+import { LIGHT_BASEMAP } from "../lib/basemaps.js";
 import { geoBounds, MapDownloadBar } from "./ResultsMap.jsx";
 import { GAP_CLASSES, CLASS_ORDER, gapMeta } from "../lib/gap.js";
 import { fmtInt, fmtPct } from "../lib/format.js";
@@ -72,10 +73,7 @@ export default function CoverageMap({
   return (
     <div className="map-wrap">
       <MapContainer bounds={bounds} className="results-map" scrollWheelZoom preferCanvas>
-        <TileLayer
-          attribution="&copy; OpenStreetMap &copy; CARTO"
-          url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-        />
+        <TileLayer {...LIGHT_BASEMAP} />
         <GeoJSON
           key={active || "all"}
           ref={geoRef}
