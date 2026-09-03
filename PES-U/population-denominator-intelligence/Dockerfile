@@ -4,7 +4,7 @@
 # would mean rebuilding that call as a network hop.
 
 # --- Stage 1: build the JAR -------------------------------------------------
-FROM maven:3.9-eclipse-temurin-21 AS java-build
+FROM maven:3.9-eclipse-temurin-17 AS java-build
 WORKDIR /build
 COPY pdi-service/pom.xml .
 # Warm the dependency cache on its own layer so source edits do not re-download Maven.
@@ -13,7 +13,7 @@ COPY pdi-service/src ./src
 RUN mvn -B clean package -DskipTests
 
 # --- Stage 2: runtime -------------------------------------------------------
-FROM eclipse-temurin:21-jre-jammy
+FROM eclipse-temurin:17-jre-jammy
 WORKDIR /app
 
 # GDAL/GEOS/PROJ are the native libraries behind rasterio, geopandas and pyproj.

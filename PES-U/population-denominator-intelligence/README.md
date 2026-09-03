@@ -59,7 +59,7 @@ graph TB
         TGT["features.targets<br/>orchestrator + CLI"]
     end
 
-    subgraph Service["pdi-service — population-denominator-service (Java 21 / Spring Boot 3.4)"]
+    subgraph Service["pdi-service — population-denominator-service (Java 17 / Spring Boot 3.4)"]
         JOB["Async job runner<br/>PythonEngineRunner"]
         CACHE["Result cache<br/>engine_result_cache"]
         API["REST API<br/>/population/v1/**"]
@@ -104,7 +104,7 @@ dashboard aggregates straight out of those tables through JPA — no raster math
 | `pdi-batch/features/` | `estimation` (F1), `gap` (F2), `invisible` (F4), `risk` (F5), `targets` (orchestrator + CLI entry point). |
 | `pdi-batch/persistence/store.py` | Upserts engine output into the PostGIS tables. |
 | `pdi-batch/tests/` | `pytest` suite over sources and features. |
-| `pdi-service/` | `population-denominator-service` — Spring Boot 3.4 / Java 21 API that drives the engine and serves results. |
+| `pdi-service/` | `population-denominator-service` — Spring Boot 3.4 / Java 17 API that drives the engine and serves results. |
 | `db/migration/` | Flyway migrations `V1`–`V5` (PostGIS extensions, boundaries, PDI tables, risk-config seed, result cache). |
 | `db/init/` | SQL applied automatically on first container start (extensions). |
 | `demo/` | React + Leaflet dashboard (Feature 3) driven entirely by the service API. |
@@ -624,7 +624,7 @@ in `pdi-batch/config.py`.
 | Clustering | `scikit-learn` DBSCAN | invisible settlement detection |
 | Persistence | `sqlalchemy`, `geoalchemy2`, `psycopg` | upserts into PostGIS |
 | Database | PostgreSQL 15 + PostGIS 3.4, Flyway | DIGIT-standard, tenant-scoped |
-| API | Java 21, Spring Boot 3.4, Spring Data JPA | async job runner + read API |
+| API | Java 17, Spring Boot 3.4, Spring Data JPA | async job runner + read API |
 | Frontend | React 18 + Leaflet (`demo/`), DIGIT module (`react/`) | Feature 3 visualization |
 | Testing | `pytest`, JUnit via `spring-boot-starter-test` | |
 
